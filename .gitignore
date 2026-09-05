@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+TestResults/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+*.swp
+
+# Node (frontend, future)
+node_modules/
+dist/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local env
+*.env
