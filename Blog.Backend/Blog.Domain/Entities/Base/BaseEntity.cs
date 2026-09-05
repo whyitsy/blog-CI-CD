@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 
 namespace Blog.Domain.Entities.Base
@@ -11,6 +12,11 @@ namespace Blog.Domain.Entities.Base
         public bool IsDeleted { get; set; }
         public DateTimeOffset? DeletedAt { get; set; }
 
+        /// <summary>
+        /// 乐观锁并发令牌，EF Core 自动在 UPDATE 语句中校验原值
+        /// </summary>
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = [];
 
         /// <summary>
         /// 修改实体的删除状态为已删除，并设置删除时间为当前时间

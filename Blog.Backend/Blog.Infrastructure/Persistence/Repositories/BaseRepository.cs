@@ -7,7 +7,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
 {
     public class BaseRepository<TEntity> : IBaseRepository<TEntity> where TEntity : BaseEntity
     {
-        private readonly BlogDbContext _context;
+        protected readonly BlogDbContext _context;
         public BaseRepository(BlogDbContext context)
         {
             _context = context;
@@ -22,7 +22,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
         public async Task<int> CountAsync(Expression<Func<TEntity, bool>>? whereExpression = null)
         {
             if (whereExpression == null)
-                return await _context.Set<TEntity>().CountAsync();         
+                return await _context.Set<TEntity>().CountAsync();
             else
                 return await _context.Set<TEntity>().CountAsync(whereExpression);
         }
@@ -39,11 +39,20 @@ namespace Blog.Infrastructure.Persistence.Repositories
         /// <summary>
         /// 根据条件查询实体集合，返回不被追踪的实体对象
         /// </summary>
-        /// <param name="whereExpression"></param>
-        /// <returns></returns>
         public async Task<IEnumerable<TEntity>> QueryByConditionAsync(Expression<Func<TEntity, bool>> whereExpression)
         {
             return await _context.Set<TEntity>().Where(whereExpression).AsNoTracking().ToListAsync();
+        }
+
+        public void Update(TEntity entity)
+        {
+            _context.Set<TEntity>().Update(entity);
+        }
+
+        public void Remove(TEntity entity)
+        {
+            entity.Delete();
+            _context.Set<TEntity>().Update(entity);
         }
     }
 }

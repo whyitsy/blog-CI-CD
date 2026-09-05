@@ -7,7 +7,7 @@ namespace Blog.Domain.Entities;
 /// </summary>
 public class Category : BaseEntity
 {
-    public string Name { get; private set; }
+    public string Name { get; private set; } = string.Empty;
 
     // 导航属性
     public ICollection<Post> Posts { get; set; } = [];

@@ -4,10 +4,10 @@ namespace Blog.Domain.Entities
 {
     public class Author: BaseEntity
     {
-        public string Name { get; private set; }
-        public string Email { get; private set; }
-        public string Avatar { get; private set; }
-        public string Bio { get; private set; }
+        public string Name { get; private set; } = string.Empty;
+        public string Email { get; private set; } = string.Empty;
+        public string Avatar { get; private set; } = string.Empty;
+        public string Bio { get; private set; } = string.Empty;
 
         // 导航属性
         public ICollection<Post> Posts { get; set; } = [];
