@@ -167,7 +167,14 @@ namespace Blog.Application.Services.Post
             if (tags.Count != ids.Count)
                 throw new BusinessException("存在不合法的标签 id", ErrorCodes.InvalidArgument);
 
-            post.Tags = tags;
+            // 增量同步多对多关系：只移除取消关联的、只添加新增的，
+            // 避免整体替换导致 PostTag 连接行重复插入（主键冲突）
+            foreach (var existing in post.Tags.Where(t => !ids.Contains(t.Id)).ToList())
+                post.Tags.Remove(existing);
+
+            var existingIds = post.Tags.Select(t => t.Id).ToHashSet();
+            foreach (var tag in tags.Where(t => !existingIds.Contains(t.Id)))
+                post.Tags.Add(tag);
         }
 
         private async Task<PostDetailDto> LoadDetailOrThrowAsync(Guid id, CancellationToken cancellationToken)

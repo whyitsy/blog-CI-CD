@@ -21,12 +21,12 @@ namespace Blog.Infrastructure.Persistence.Repositories
         {
             return await _context.Categories
                 .AsNoTracking()
+                .OrderBy(c => c.Name)
                 .Select(c => new CategoryDto(
                     c.Id,
                     c.Name,
                     c.Posts.Count(p => p.PublishedAt != null),
                     c.Version))
-                .OrderBy(c => c.Name)
                 .ToListAsync(cancellationToken);
         }
 
@@ -34,12 +34,12 @@ namespace Blog.Infrastructure.Persistence.Repositories
         {
             return await _context.Tags
                 .AsNoTracking()
+                .OrderBy(t => t.Name)
                 .Select(t => new TagDto(
                     t.Id,
                     t.Name,
                     t.Posts.Count(p => p.PublishedAt != null),
                     t.Version))
-                .OrderBy(t => t.Name)
                 .ToListAsync(cancellationToken);
         }
     }

@@ -27,9 +27,10 @@ namespace Blog.Infrastructure.Persistence.Repositories
         {
             return await _context.SocialLinks
                 .AsNoTracking()
+                .Where(l => l.IsVisible)
+                .OrderBy(l => l.SortOrder)
                 .Select(l => new SocialLinkDto(l.Id, l.Name, l.Icon, l.Url, l.SortOrder, l.IsVisible,
                     l.Version))
-                .OrderBy(l => l.SortOrder)
                 .ToListAsync(cancellationToken);
         }
 

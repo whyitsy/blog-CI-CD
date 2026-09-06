@@ -58,6 +58,11 @@ namespace Blog.Infrastructure
             services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
             services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
+            // 令牌桶限流：Redis 分布式桶 + 内存降级桶（规则见 appsettings RateLimit 节）
+            services.Configure<RateLimitOptions>(configuration.GetSection(RateLimitOptions.SectionName));
+            services.AddSingleton<RedisTokenBucketLimiter>();
+            services.AddSingleton<InMemoryTokenBucketLimiter>();
+
             return services;
         }
     }

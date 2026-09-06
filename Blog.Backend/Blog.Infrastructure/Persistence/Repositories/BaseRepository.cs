@@ -31,7 +31,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
             return await _context.Set<TEntity>().AsNoTracking().ToListAsync(cancellationToken);
         }
 
-        public async Task<TEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        public virtual async Task<TEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
             return await _context.Set<TEntity>().FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
         }

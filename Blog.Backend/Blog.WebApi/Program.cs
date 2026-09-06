@@ -76,8 +76,9 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not Microsoft.Extensions.Hosting.HostAbortedException)
 {
+    // HostAbortedException 为 EF Core 设计期工具（dotnet-ef）正常中止宿主，不算启动失败
     Log.Fatal(ex, "应用启动失败");
 }
 finally

@@ -42,10 +42,9 @@ namespace Blog.WebApi.Controllers
         [HttpGet("{id:guid}")]
         public async Task<ApiResponse<PostDetailDto>> GetDetail(Guid id, CancellationToken cancellationToken)
         {
-            var detail = await _posts.GetDetailAsync(id, cancellationToken);
-            return detail is null
-                ? ApiResponse<PostDetailDto>.Fail(ErrorCodes.NotFound, "文章不存在")
-                : ApiResponse<PostDetailDto>.Ok(detail);
+            var detail = await _posts.GetDetailAsync(id, cancellationToken)
+                ?? throw new Blog.Application.Common.Exceptions.BusinessException("文章不存在", ErrorCodes.NotFound);
+            return ApiResponse<PostDetailDto>.Ok(detail);
         }
 
         /// <summary>归档：按年月分组的时间轴数据</summary>
