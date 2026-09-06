@@ -1,10 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Blog.Application.Services.Author
+﻿namespace Blog.Application.Services.Author
 {
     public interface IAuthorService
     {
+        Task<List<AuthorDto>> GetAllAsync(CancellationToken cancellationToken = default);
     }
 }

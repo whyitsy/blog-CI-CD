@@ -103,6 +103,16 @@ namespace Blog.Infrastructure.Persistence
                 entity.HasQueryFilter(e => !e.IsDeleted);
             });
 
+            // 乐观锁：Version 为整数并发令牌（跨数据库）。
+            // 更新 SQL 由仓储层手动控制（见 BaseRepository.ApplyOptimisticVersion）：
+            // UPDATE ... SET "Version" = @expected + 1 WHERE "Id" = @id AND "Version" = @expected
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                var versionProperty = entityType.FindProperty(nameof(BaseEntity.Version));
+                if (versionProperty is not null)
+                    versionProperty.IsConcurrencyToken = true;
+            }
+
             SeedData(modelBuilder);
         }
 
@@ -120,17 +130,17 @@ namespace Blog.Infrastructure.Persistence
                 CreatedAt = now,
                 IsDeleted = false,
                 DeletedAt = (DateTimeOffset?)null,
-                RowVersion = Array.Empty<byte>()
+                Version = 1
             });
 
             modelBuilder.Entity<SiteConfig>().HasData(
-                new { Id = SeedSiteNameId, Key = SiteConfigKeys.SiteName, Value = "kky's blog", Description = "站点名称", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, RowVersion = Array.Empty<byte>() },
-                new { Id = SeedSubtitlesId, Key = SiteConfigKeys.HeroSubtitles, Value = "[\"Hello, World!\",\"Welcome to my blog.\",\"Stay hungry, stay foolish.\"]", Description = "首屏打字机文案", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, RowVersion = Array.Empty<byte>() },
-                new { Id = SeedFoundingId, Key = SiteConfigKeys.FoundingDate, Value = "2026-01-01", Description = "建站日期", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, RowVersion = Array.Empty<byte>() });
+                new { Id = SeedSiteNameId, Key = SiteConfigKeys.SiteName, Value = "kky's blog", Description = "站点名称", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, Version = 1 },
+                new { Id = SeedSubtitlesId, Key = SiteConfigKeys.HeroSubtitles, Value = "[\"Hello, World!\",\"Welcome to my blog.\",\"Stay hungry, stay foolish.\"]", Description = "首屏打字机文案", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, Version = 1 },
+                new { Id = SeedFoundingId, Key = SiteConfigKeys.FoundingDate, Value = "2026-01-01", Description = "建站日期", CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, Version = 1 });
 
             modelBuilder.Entity<SocialLink>().HasData(
-                new { Id = SeedGithubLinkId, Name = "GitHub", Icon = "github", Url = "https://github.com", SortOrder = 0, IsVisible = true, CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, RowVersion = Array.Empty<byte>() },
-                new { Id = SeedBilibiliLinkId, Name = "Bilibili", Icon = "bilibili", Url = "https://www.bilibili.com", SortOrder = 1, IsVisible = true, CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, RowVersion = Array.Empty<byte>() });
+                new { Id = SeedGithubLinkId, Name = "GitHub", Icon = "github", Url = "https://github.com", SortOrder = 0, IsVisible = true, CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, Version = 1 },
+                new { Id = SeedBilibiliLinkId, Name = "Bilibili", Icon = "bilibili", Url = "https://www.bilibili.com", SortOrder = 1, IsVisible = true, CreatedAt = now, IsDeleted = false, DeletedAt = (DateTimeOffset?)null, Version = 1 });
         }
     }
 }

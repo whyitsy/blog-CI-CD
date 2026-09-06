@@ -9,17 +9,20 @@ namespace Blog.Domain.IRepository
     /// <typeparam name="TEntity">blog 的实体类型</typeparam>
     public interface IBaseRepository<TEntity> where TEntity : BaseEntity
     {
-        Task<TEntity?> GetByIdAsync(Guid id);
-        Task<IEnumerable<TEntity>> GetAllAsync();
-        Task<IEnumerable<TEntity>> QueryByConditionAsync(Expression<Func<TEntity, bool>> whereExpression);
-        Task<TEntity> AddAsync(TEntity entity);
-
-        /// <summary>标记实体为已修改（配合 UoW 提交，乐观锁由 RowVersion 保证）</summary>
+        Task<TEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<IEnumerable<TEntity>> GetAllAsync(CancellationToken cancellationToken = default);
+        Task<IEnumerable<TEntity>> QueryByConditionAsync(Expression<Func<TEntity, bool>> whereExpression, CancellationToken cancellationToken = default);
+        Task<TEntity> AddAsync(TEntity entity, CancellationToken cancellationToken = default);
+        Task<int> CountAsync(Expression<Func<TEntity, bool>>? whereExpression = null, CancellationToken cancellationToken = default);
         void Update(TEntity entity);
-
-        /// <summary>软删除实体（调用 entity.Delete()，配合 UoW 提交）</summary>
         void Remove(TEntity entity);
 
-        Task<int> CountAsync(Expression<Func<TEntity, bool>>? whereExpression = null);
+        /// <summary>
+        /// 手动应用乐观锁（整数版本号 + SQL 条件）：
+        /// 以 expectedVersion 为基准，保存时生成
+        /// UPDATE ... SET "Version" = @expected + 1 WHERE "Id" = @id AND "Version" = @expected。
+        /// 版本不匹配时 0 行受影响，EF Core 抛出 DbUpdateConcurrencyException。
+        /// </summary>
+        void ApplyOptimisticVersion(TEntity entity, int expectedVersion);
     }
 }

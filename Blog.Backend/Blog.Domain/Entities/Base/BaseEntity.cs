@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Text;
 
 namespace Blog.Domain.Entities.Base
@@ -13,10 +12,12 @@ namespace Blog.Domain.Entities.Base
         public DateTimeOffset? DeletedAt { get; set; }
 
         /// <summary>
-        /// 乐观锁并发令牌，EF Core 自动在 UPDATE 语句中校验原值
+        /// 乐观锁整数版本号（从 1 开始）。
+        /// 由仓储层手动控制：更新时以客户端持有的版本号作 SQL 条件，
+        /// 生成 UPDATE ... SET "Version" = @expected + 1 WHERE "Id" = @id AND "Version" = @expected。
+        /// 版本不匹配时 0 行受影响，EF 抛出 DbUpdateConcurrencyException。
         /// </summary>
-        [Timestamp]
-        public byte[] RowVersion { get; set; } = [];
+        public int Version { get; protected set; } = 1;
 
         /// <summary>
         /// 修改实体的删除状态为已删除，并设置删除时间为当前时间
