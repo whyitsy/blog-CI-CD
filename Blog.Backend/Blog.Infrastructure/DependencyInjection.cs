@@ -1,8 +1,11 @@
 ﻿using Blog.Application.Interfaces;
 using Blog.Domain.IRepository;
 using Blog.Infrastructure.Caching;
+using Blog.Infrastructure.Files;
 using Blog.Infrastructure.Persistence;
+using Blog.Infrastructure.Persistence.Interceptors;
 using Blog.Infrastructure.Persistence.Repositories;
+using Blog.Infrastructure.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,9 +16,11 @@ namespace Blog.Infrastructure
     {
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddDbContext<BlogDbContext>(options =>
+            services.AddScoped<SlowQueryInterceptor>();
+            services.AddDbContext<BlogDbContext>((sp, options) =>
             {
                 options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"));
+                options.AddInterceptors(sp.GetRequiredService<SlowQueryInterceptor>());
             });
             services.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -48,6 +53,10 @@ namespace Blog.Infrastructure
                     ? sp.GetRequiredService<RedisCacheService>()
                     : sp.GetRequiredService<MemoryCacheService>();
             });
+
+            // 文件存储（本地磁盘，/api/files 独立接口对外）
+            services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+            services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
             return services;
         }
