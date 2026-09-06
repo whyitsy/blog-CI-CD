@@ -34,12 +34,19 @@
 
 ## 构建与提交
 - `dotnet build`：**0 警告 0 错误**
-- Git 提交：baseline → domain → int-version 乐观锁+服务层+缓存 → webapi+serilog+限流（共 4 次）
+- Git 共 6 次提交，最新：`35dc41d chore: ignore runtime uploaded media files`
 
-## 待办（阻塞项）
-1. **Docker Desktop 未运行**：迁移 `20260906040849_InitCreate` 已生成但 blog_stage2 库未重建，接口冒烟测试未执行 → 启动 Docker 后执行 `dotnet ef database update`
-2. 前端 Vue3 未开始（页面规划见 `docs/04-前端页面路由规划.md`）
+## 冒烟测试（2026-09-06 13:45 全部通过）
+数据库迁移已应用，20+ 项接口验证全过：CRUD、乐观锁 409（正确版本200 version+1 / 过期版本4090）、
+模糊搜索、归档分组、分页、分类标签文章数、站点统计、文件上传/下载、目录穿越 404、限流 429、400/404 状态码。
+测试中修复 5 个 bug：限流 DI 未注册、EF 投影后排序、PostTag 重复插入（改增量同步）、404 状态映射、HostAbortedException 误报。
+
+## 待办
+1. 前端 Vue3 未开始（页面规划见 `docs/04-前端页面路由规划.md`）
+2. （可选）生产环境配置：Redis Provider 切换、限流规则调优
 
 ## 环境备忘
 - 沙箱 Bash 缺 Windows 环境变量导致 dotnet 构建报 `ArgumentNullException path1` → 用 `/d/tmpbuild/dn.sh` 包装脚本执行 dotnet
 - 数据库：Docker 容器 `pgsql`（kky/123456），本阶段使用独立库 `blog_stage2`（旧库 blog 有历史数据未动）
+- 接口验证只能用沙箱 Git Bash curl（`--noproxy localhost,127.0.0.1`）；PowerShell 的 localhost 请求会被 mock 层拦截返回假数据
+- 重启应用前用 `Get-Process -Name "Blog.WebApi"` 杀进程（apphost 进程名不是 dotnet）

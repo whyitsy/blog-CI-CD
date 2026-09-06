@@ -1,0 +1,181 @@
+/* 全局基础样式：reset + 排版 + 通用工具类 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font: var(--text-body);
+  color: var(--text-default);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  transition: background var(--transition-normal), color var(--transition-normal);
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+::selection {
+  background: rgba(124, 92, 255, 0.35);
+  color: var(--text-strong);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ---------- 通用工具 ---------- */
+.container {
+  width: 100%;
+  max-width: var(--size-container);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.glass {
+  background: rgba(27, 29, 36, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+[data-theme='light'] .glass {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--transition-normal),
+    box-shadow var(--transition-normal),
+    border-color var(--transition-normal);
+}
+
+/* 标签徽章 */
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font: var(--text-caption);
+  color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-500) 35%, transparent);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+/* 极光光斑背景（Hero/页头共用） */
+.aurora-blobs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora-blobs::before,
+.aurora-blobs::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+.aurora-blobs::before {
+  width: 560px;
+  height: 560px;
+  top: -160px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(36, 198, 220, 0.36), transparent 70%);
+}
+.aurora-blobs::after {
+  width: 640px;
+  height: 640px;
+  bottom: -220px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(255, 0, 153, 0.3), transparent 70%);
+}
+[data-theme='light'] .aurora-blobs::before {
+  background: radial-gradient(circle, rgba(36, 198, 220, 0.16), transparent 70%);
+}
+[data-theme='light'] .aurora-blobs::after {
+  background: radial-gradient(circle, rgba(255, 0, 153, 0.14), transparent 70%);
+}
+
+/* 页面切换过渡 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--transition-fast);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 动画降级 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

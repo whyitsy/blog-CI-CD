@@ -1,0 +1,194 @@
+// Hexo Aurora Blog Design Tokens v2 — SCSS
+// Usage: @use "tokens" as t; color: t.$brand-500;
+
+// ---------- Theme Maps ----------
+$dark: (
+  bg-canvas: #13141A,
+  bg-surface: #1B1D24,
+  bg-raised: #23262F,
+  bg-sunken: #0E0F13,
+  bg-invert: #171A20,
+
+  text-strong: #F2F5F9,
+  text-default: #CBDAE5,
+  text-muted: #A3A9B8,
+  text-subtle: #8A90A0,
+  text-disabled: #565B68,
+  text-invert: #13141A,
+
+  brand-400: #4FD8EA,
+  brand-500: #22C5DC,
+  brand-600: #0FB6D6,
+
+  sub-400: #F87FB4,
+  sub-500: #F4569D,
+  sub-600: #DB2D7E,
+
+  accent-500: #7C5CFF,
+
+  gradient-start: #24C6DC,
+  gradient-mid: #5433FF,
+  gradient-end: #FF0099,
+
+  border-subtle: #2A2C36,
+  border-default: #383B47,
+  border-strong: #4A4E5C,
+
+  status-success: #3DD68C,
+  status-warning: #F5B544,
+  status-danger: #F87171,
+  status-info: #60A5FA
+);
+
+$light: (
+  bg-canvas: #F1F3F9,
+  bg-surface: #FFFFFF,
+  bg-raised: #FFFFFF,
+  bg-sunken: #E9EDF5,
+  bg-invert: #F2F5F9,
+
+  text-strong: #171A20,
+  text-default: #2E333D,
+  text-muted: #535B6D,
+  text-subtle: #6A7284,
+  text-disabled: #A2AABE,
+  text-invert: #FFFFFF,
+
+  brand-400: #F0639F,
+  brand-500: #E93796,
+  brand-600: #C62A7C,
+
+  sub-400: #7B8CF0,
+  sub-500: #547CE7,
+  sub-600: #3B5FD0,
+
+  accent-500: #5433FF,
+
+  gradient-start: #24C6DC,
+  gradient-mid: #5433FF,
+  gradient-end: #FF0099,
+
+  border-subtle: #E6EAF3,
+  border-default: #D3D9E8,
+  border-strong: #B9C1D4,
+
+  status-success: #0F9D58,
+  status-warning: #D9800A,
+  status-danger: #DC2626,
+  status-info: #4166DB
+);
+
+// Default theme (Dark)
+$bg-canvas: map-get($dark, bg-canvas);
+$bg-surface: map-get($dark, bg-surface);
+$bg-raised: map-get($dark, bg-raised);
+$bg-sunken: map-get($dark, bg-sunken);
+$bg-invert: map-get($dark, bg-invert);
+
+$text-strong: map-get($dark, text-strong);
+$text-default: map-get($dark, text-default);
+$text-muted: map-get($dark, text-muted);
+$text-subtle: map-get($dark, text-subtle);
+$text-disabled: map-get($dark, text-disabled);
+$text-invert: map-get($dark, text-invert);
+
+$brand-400: map-get($dark, brand-400);
+$brand-500: map-get($dark, brand-500);
+$brand-600: map-get($dark, brand-600);
+
+$sub-400: map-get($dark, sub-400);
+$sub-500: map-get($dark, sub-500);
+$sub-600: map-get($dark, sub-600);
+
+$accent-500: map-get($dark, accent-500);
+
+$gradient-start: map-get($dark, gradient-start);
+$gradient-mid: map-get($dark, gradient-mid);
+$gradient-end: map-get($dark, gradient-end);
+
+$border-subtle: map-get($dark, border-subtle);
+$border-default: map-get($dark, border-default);
+$border-strong: map-get($dark, border-strong);
+
+$status-success: map-get($dark, status-success);
+$status-warning: map-get($dark, status-warning);
+$status-danger: map-get($dark, status-danger);
+$status-info: map-get($dark, status-info);
+
+// ---------- Typography ----------
+$font-sans: "Rubik", "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+$font-mono: "Noto Sans Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+
+$text-display: 700 56px / 1.15 $font-sans;
+$text-h1: 700 46px / 1.2 $font-sans;
+$text-h2: 700 28px / 1.3 $font-sans;
+$text-h3: 600 22px / 1.35 $font-sans;
+$text-body: 400 16px / 1.75 $font-sans;
+$text-body-sm: 400 14px / 1.6 $font-sans;
+$text-caption: 500 12px / 1.5 $font-sans;
+
+// ---------- Metrics ----------
+$radius-xs: 4px;
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 16px;
+$radius-xl: 24px;
+$radius-2xl: 32px;
+
+$space-1: 4px;
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 20px;
+$space-6: 24px;
+$space-8: 32px;
+$space-10: 40px;
+$space-12: 48px;
+$space-16: 64px;
+$space-24: 96px;
+
+$size-prose: 720px;
+$size-container: 1120px;
+$size-container-wide: 1280px;
+$size-sidebar: 300px;
+
+// ---------- Effects ----------
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
+$shadow-md: 0 8px 24px rgba(0, 0, 0, 0.18);
+$shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.24);
+
+$glow-cyan: 0 0 20px rgba(36, 198, 220, 0.45);
+$glow-purple: 0 0 20px rgba(124, 92, 255, 0.45);
+$glow-pink: 0 0 20px rgba(255, 0, 153, 0.45);
+
+$transition-fast: 150ms ease;
+$transition-normal: 250ms ease;
+
+// ---------- Helpers ----------
+@function theme($key, $mode: dark) {
+  @if $mode == light {
+    @return map-get($light, $key);
+  }
+  @return map-get($dark, $key);
+}
+
+@mixin gradient-text($from: $gradient-start, $to: $gradient-end) {
+  background: linear-gradient(90deg, $from, $to);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@mixin aurora-gradient($direction: 90deg) {
+  background: linear-gradient($direction, $gradient-start, $gradient-mid, $gradient-end);
+}
+
+@mixin glass($mode: dark) {
+  @if $mode == light {
+    background: rgba(255, 255, 255, 0.82);
+  } @else {
+    background: rgba(27, 29, 36, 0.82);
+  }
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
