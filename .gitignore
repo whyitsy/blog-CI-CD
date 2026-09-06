@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local env
 *.env
+
+# Uploaded media (runtime files)
+Blog.Backend/Blog.WebApi/media/
