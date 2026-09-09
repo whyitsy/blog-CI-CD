@@ -66,5 +66,7 @@
         public Guid? CategoryId { get; init; }
         public Guid? TagId { get; init; }
         public string? Keyword { get; init; }
+        /// <summary>true 时返回全部（含草稿），管理后台使用；默认 false（仅已发布）</summary>
+        public bool IncludeUnpublished { get; init; } = false;
     }
 }

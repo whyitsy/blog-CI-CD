@@ -113,4 +113,20 @@ export interface PostQuery {
   categoryId?: string
   tagId?: string
   keyword?: string
+  /** 管理后台使用，true 时包含草稿 */
+  includeUnpublished?: boolean
+}
+
+/** 创建/更新文章请求体（与后端 CreatePostRequest / UpdatePostRequest 对齐） */
+export interface PostPayload {
+  title: string
+  content: string
+  summary: string
+  coverImage: string
+  categoryId: string | null
+  tagIds: string[]
+  /** 创建时可指定是否立即发布；更新时未使用，发布/下架走单独接口 */
+  publish?: boolean
+  /** 更新时必须携带版本号（由 PostDetailDto.version 提供），创建时可省略 */
+  version?: number
 }

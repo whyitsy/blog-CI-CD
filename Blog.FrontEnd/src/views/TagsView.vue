@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getTags } from '@/api/site'
+import { getTags } from '@/api/tags'
 import type { TagDto } from '@/types'
 
 const router = useRouter()

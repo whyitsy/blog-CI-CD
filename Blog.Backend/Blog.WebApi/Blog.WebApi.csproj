@@ -25,4 +25,10 @@
     <Folder Include="Controllers\" />
   </ItemGroup>
 
+  <!-- 构建前杀掉运行中的 Blog.WebApi，避免它锁住输出目录里的 DLL 导致 copy 失败 -->
+  <Target Name="KillRunningBlogWebApi" BeforeTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Message Text="Killing running Blog.WebApi process to free DLL handles..." Importance="high" />
+    <Exec Command="taskkill /F /IM Blog.WebApi.exe" IgnoreExitCode="true" ContinueOnError="true" />
+  </Target>
+
 </Project>

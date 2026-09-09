@@ -35,7 +35,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data
 }
 
-export function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
+export function get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const qs = params
     ? '?' +
       Object.entries(params)

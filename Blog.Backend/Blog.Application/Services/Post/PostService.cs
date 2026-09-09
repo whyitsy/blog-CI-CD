@@ -204,7 +204,11 @@ namespace Blog.Application.Services.Post
         private static PostQueryRequest Normalize(PostQueryRequest query)
         {
             var page = query.Page < 1 ? 1 : query.Page;
-            var pageSize = query.PageSize is < 1 or > 50 ? 12 : query.PageSize;
+            // 管理端 IncludeUnpublished 时允许更大分页；公网首页限制 50
+            var maxSize = query.IncludeUnpublished ? 100 : 50;
+            int pageSize;
+            if (query.PageSize < 1 || query.PageSize > maxSize) pageSize = 12;
+            else pageSize = query.PageSize;
             var keyword = string.IsNullOrWhiteSpace(query.Keyword) ? null : query.Keyword.Trim();
 
             return query with { Page = page, PageSize = pageSize, Keyword = keyword };

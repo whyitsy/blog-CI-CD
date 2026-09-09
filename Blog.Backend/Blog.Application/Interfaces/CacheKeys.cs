@@ -12,7 +12,7 @@ namespace Blog.Application.Interfaces
         public const string SitePrefix = Prefix + "site:";
 
         public static string PostList(PostQueryRequest query) =>
-            $"{PostsPrefix}list:p{query.Page}s{query.PageSize}c{query.CategoryId}t{query.TagId}k{Hash(query.Keyword)}";
+            $"{PostsPrefix}list:p{query.Page}s{query.PageSize}c{query.CategoryId}t{query.TagId}k{Hash(query.Keyword)}u{(query.IncludeUnpublished ? 1 : 0)}";
 
         public static string PostDetail(Guid id) => $"{PostsPrefix}detail:{id}";
 

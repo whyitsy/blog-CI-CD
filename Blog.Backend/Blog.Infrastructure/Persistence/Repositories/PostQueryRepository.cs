@@ -20,7 +20,12 @@ namespace Blog.Infrastructure.Persistence.Repositories
 
         public async Task<PagedResult<PostCardDto>> GetPagedAsync(PostQueryRequest query, CancellationToken cancellationToken = default)
         {
-            var q = ApplyFilters(_context.Posts.AsNoTracking().Where(p => p.PublishedAt != null), query);
+            var published = _context.Posts.AsNoTracking().Where(p => !p.IsDeleted);
+            if (!query.IncludeUnpublished)
+            {
+                published = published.Where(p => p.PublishedAt != null);
+            }
+            var q = ApplyFilters(published, query);
 
             var total = await q.CountAsync(cancellationToken);
 

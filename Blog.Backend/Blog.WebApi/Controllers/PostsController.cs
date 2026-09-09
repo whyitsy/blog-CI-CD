@@ -24,6 +24,7 @@ namespace Blog.WebApi.Controllers
             [FromQuery] Guid? categoryId = null,
             [FromQuery] Guid? tagId = null,
             [FromQuery] string? keyword = null,
+            [FromQuery] bool includeUnpublished = false,
             CancellationToken cancellationToken = default)
         {
             var query = new PostQueryRequest
@@ -32,7 +33,8 @@ namespace Blog.WebApi.Controllers
                 PageSize = pageSize,
                 CategoryId = categoryId,
                 TagId = tagId,
-                Keyword = keyword
+                Keyword = keyword,
+                IncludeUnpublished = includeUnpublished,
             };
             var result = await _posts.GetPagedAsync(query, cancellationToken);
             return ApiResponse<PagedResult<PostCardDto>>.Ok(result);

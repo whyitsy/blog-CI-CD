@@ -22,6 +22,7 @@ const navItems = [
   { name: 'tags', label: '标签', to: '/tags' },
   { name: 'categories', label: '分类', to: '/categories' },
   { name: 'archive', label: '归档', to: '/archive' },
+  { name: 'admin-posts', label: '管理', to: '/admin' },
 ]
 
 const isActive = (name: string) => route.name === name

@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PostCardList from '@/components/post/PostCardList.vue'
 import { getPosts, searchPosts } from '@/api/posts'
-import { getCategories, getTags } from '@/api/site'
+import { getCategories } from '@/api/categories'
+import { getTags } from '@/api/tags'
 import type { PagedResult, PostListItemDto } from '@/types'
 
 const route = useRoute()

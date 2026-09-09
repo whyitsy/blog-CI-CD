@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCategories } from '@/api/site'
+import { getCategories } from '@/api/categories'
 import type { CategoryDto } from '@/types'
 
 const router = useRouter()
