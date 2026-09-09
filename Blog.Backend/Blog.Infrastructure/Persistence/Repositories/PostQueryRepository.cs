@@ -64,6 +64,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
                     p.PublishedAt,
                     p.UpdatedAt,
                     p.ViewCount,
+                    p.WordCount,
                     p.Version))
                 .FirstOrDefaultAsync(cancellationToken);
         }

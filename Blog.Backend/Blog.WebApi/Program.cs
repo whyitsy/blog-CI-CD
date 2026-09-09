@@ -40,7 +40,7 @@ try
     });
 
     builder.Services.AddApplication();
-    builder.Services.AddInfrastructureServices(builder.Configuration);
+    builder.Services.AddInfrastructure(builder.Configuration);
 
     var app = builder.Build();
 

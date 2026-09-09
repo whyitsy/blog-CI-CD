@@ -31,6 +31,7 @@
         DateTimeOffset? PublishedAt,
         DateTimeOffset? UpdatedAt,
         int ViewCount,
+        int WordCount,
         int Version
     );
 
