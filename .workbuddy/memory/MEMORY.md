@@ -20,9 +20,14 @@
 - 后端地址 http://localhost:5080；前端 dev http://localhost:5173（vite proxy `/api`→5080）
 
 ## 启动命令
-- 后端：`cd Blog.Backend/Blog.WebApi && /d/tmpbuild/dn.sh run --no-build --urls http://localhost:5080`
+- 后端持久运行（推荐）：在 Bash 工具里用 `run_in_background=true` 执行：
+  ```bash
+  cd /d/dotNET项目/Stage2/Blog.Backend/Blog.WebApi/bin/Debug/net10.0 && env -u HTTP_PROXY -u http_proxy -u HTTPS_PROXY -u https_proxy ASPNETCORE_ENVIRONMENT=Development ./Blog.WebApi.exe --urls http://localhost:5080
+  ```
+  注意：不要加 `&` 或 `nohup`，让 Bash 工具的 `run_in_background` 保持进程；带 `&` 的进程会在 Bash 会话结束后被系统杀掉，导致 Vite 代理 `ECONNREFUSED`。
 - 前端：`cd Blog.FrontEnd && npm run dev`（先 `npm run build` 用 vue-tsc 校验）
 - 先确保 Docker Desktop 已启动且 pgsql/redis 容器 running，再启动后端
+- 杀后端进程：`/c/Windows/system32/taskkill.exe /F /IM Blog.WebApi.exe`（Git Bash 的 `taskkill` 语法可能与 Windows 不同，用完整路径更稳）
 
 ## 当前进度（截至 2026-09-09）
 - 后端：**已全部完成并冒烟测试通过**（6 次 git commit），20+ 接口全过
