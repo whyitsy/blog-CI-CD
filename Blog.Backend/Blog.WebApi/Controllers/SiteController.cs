@@ -49,6 +49,14 @@ namespace Blog.WebApi.Controllers
             return ApiResponse<List<SocialLinkDto>>.Ok(links);
         }
 
+        /// <summary>删除社交链接（软删除，需携带当前版本号）</summary>
+        [HttpDelete("social-links/{id:guid}")]
+        public async Task<ApiResponse<object?>> DeleteSocialLink(Guid id, [FromQuery] int version, CancellationToken cancellationToken)
+        {
+            await _site.DeleteSocialLinkAsync(id, version, cancellationToken);
+            return ApiResponse.Ok();
+        }
+
         /// <summary>Footer 统计：建站天数 / 总字数 / 浏览次数等</summary>
         [HttpGet("stats")]
         public async Task<ApiResponse<SiteStatsDto>> GetStats(CancellationToken cancellationToken)

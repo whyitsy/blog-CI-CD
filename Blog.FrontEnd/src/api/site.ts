@@ -1,4 +1,4 @@
-import { get, put } from './http'
+import { del, get, put } from './http'
 import type {
   SiteConfigDto,
   SiteStatsDto,
@@ -25,3 +25,8 @@ export function saveSocialLinks(items: UpsertSocialLinkPayload[]): Promise<Socia
 }
 
 export const getSiteStats = () => get<SiteStatsDto>('/api/site/stats')
+
+/** 删除社交链接（软删除，需携带当前 version） */
+export function deleteSocialLink(id: string, version: number): Promise<null> {
+  return del<null>(`/api/site/social-links/${id}?version=${version}`)
+}

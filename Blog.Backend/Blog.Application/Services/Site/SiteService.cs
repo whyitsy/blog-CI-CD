@@ -128,6 +128,22 @@ namespace Blog.Application.Services.Site
             return await GetSocialLinksAsync(includeHidden: true, cancellationToken);
         }
 
+        public async Task DeleteSocialLinkAsync(Guid id, int version, CancellationToken cancellationToken = default)
+        {
+            if (version < 1)
+                throw new BusinessException("缺少合法的版本号，无法进行并发控制", ErrorCodes.InvalidArgument);
+
+            var link = await _socialLinks.GetByIdAsync(id, cancellationToken)
+                ?? throw new BusinessException("社交链接不存在", ErrorCodes.NotFound);
+
+            _socialLinks.ApplyOptimisticVersion(link, version);
+            _socialLinks.Remove(link);
+            await _uow.SaveChangesAsync(cancellationToken);
+
+            await _cache.RemoveAsync(CacheKeys.SiteSocialLinks, cancellationToken);
+            await _cache.RemoveAsync(CacheKeys.SiteSocialLinksAll, cancellationToken);
+        }
+
         public async Task<SiteStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
         {
             var config = await GetConfigAsync(cancellationToken);
