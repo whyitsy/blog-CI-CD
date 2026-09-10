@@ -55,7 +55,8 @@ namespace Blog.Application.Services.Post
             // 这是「草稿权限保护」（Q7）的关键一环 —— 仅靠端点鉴权不够，必须过滤数据。
             if (normalized.IncludeUnpublished && !_currentUser.IsAdmin)
             {
-                if (_currentUser.Role != UserRole.Author || _currentUser.UserId is null)
+                // 非管理员读「含草稿」列表时，强制限定为**自己创建的**（账号维度）
+                if (!_currentUser.IsAuthenticated || _currentUser.UserId is null)
                     throw new BusinessException("无权查看未发布内容", ErrorCodes.Forbidden);
 
                 normalized = normalized with { OwnedByUserId = _currentUser.UserId };
@@ -215,8 +216,14 @@ namespace Blog.Application.Services.Post
         // ---------------------------------------------------------------- 权限
 
         /// <summary>
-        /// 归属校验：管理员可操作全部；作者只能操作自己创建（或署名给自己）的文章。
-        /// 必须放在服务层，因为要先查到实体才知道归属，光靠 [Authorize] 无法覆盖。
+        /// 归属校验：管理员可操作全部；作者只能操作**自己创建的**文章。
+        ///
+        /// 归属判断只认 <c>CreatedByUserId</c>（创建这篇文章的**账号**），不能认 AuthorId。
+        /// 原因：`Author` 是内容层的“署名对象”，多个作者账号可能被管理员关联到同一个 Author
+        /// （例如同一人开两个账号，或管理员图省事复用了同一个 Author）。
+        /// 若用 AuthorId 判断，这些账号之间就可以互相改/删对方的文章，形成越权。
+        ///
+        /// 必须放在服务层：要先查到实体才知道归属，光靠 [Authorize] 无法覆盖。
         /// </summary>
         private void EnsureCanManage(PostEntity post)
         {
@@ -225,18 +232,20 @@ namespace Blog.Application.Services.Post
             if (!_currentUser.IsAuthenticated)
                 throw new BusinessException("未登录", ErrorCodes.Unauthorized);
 
-            var isOwner =
-                (post.CreatedByUserId.HasValue && post.CreatedByUserId == _currentUser.UserId) ||
-                (post.AuthorId.HasValue && _currentUser.AuthorId.HasValue && post.AuthorId == _currentUser.AuthorId);
+            var isOwner = post.CreatedByUserId.HasValue && post.CreatedByUserId == _currentUser.UserId;
 
             if (!isOwner)
                 throw new BusinessException("无权操作他人的文章", ErrorCodes.Forbidden);
         }
 
+        /// <summary>
+        /// 能否读取未发布文章（草稿）：仅管理员与**创建者账号**。
+        /// 与 <see cref="EnsureCanManage"/> 同理，只认 CreatedByUserId。
+        /// 注意：不可读时对外表现为 404（而不是 403），避免通过状态码探测草稿是否存在。
+        /// </summary>
         private bool CanReadUnpublished(PostDetailDto detail) =>
             _currentUser.IsAdmin ||
-            ((detail.CreatedByUserId.HasValue && detail.CreatedByUserId == _currentUser.UserId) ||
-             (detail.AuthorId != Guid.Empty && _currentUser.AuthorId.HasValue && detail.AuthorId == _currentUser.AuthorId.Value));
+            (detail.CreatedByUserId.HasValue && detail.CreatedByUserId == _currentUser.UserId);
 
         private static int ValidateVersion(int version)
         {

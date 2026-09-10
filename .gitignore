@@ -23,8 +23,11 @@ dist/
 Thumbs.db
 .DS_Store
 
-# Local env
-*.env
+# Local env / secrets
+# 说明：Vite 的环境文件分级如下，只有带 .local 的才可能含个人密钥，必须忽略；
+# .env / .env.[mode] 是可共享的默认配置（**不得放密钥**），应入库。
+.env.local
+.env.*.local
 
 # Uploaded media (runtime files)
 Blog.Backend/Blog.WebApi/media/

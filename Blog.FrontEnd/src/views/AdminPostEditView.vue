@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PostEditor from '@/components/admin/PostEditor.vue'
-import { getPostDetail, updatePost } from '@/api/posts'
+import { getPostDetailReadonly, updatePost } from '@/api/posts'
 import type { PostDetailDto, PostPayload } from '@/types'
 
 const route = useRoute()
@@ -20,7 +20,8 @@ async function load(id: string) {
   errorMsg.value = ''
   post.value = null
   try {
-    post.value = await getPostDetail(id)
+    // 编辑页用只读端点，不污染浏览量
+    post.value = await getPostDetailReadonly(id)
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '加载失败'
   } finally {

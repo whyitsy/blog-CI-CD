@@ -2,10 +2,24 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useSiteStore } from '@/stores/site'
+import { useAuthStore } from '@/stores/auth'
+import { logout as logoutApi } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
 const site = useSiteStore()
+const auth = useAuthStore()
+
+async function onLogout() {
+  try {
+    // 后端提升 TokenVersion，使该账号所有旧 token 立即失效
+    await logoutApi()
+  } catch {
+    /* 请求失败也要清理本地，避免登不出去 */
+  }
+  auth.clear()
+  await router.replace({ name: 'admin-login' })
+}
 
 interface AdminNavItem {
   to: string
@@ -61,18 +75,27 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
         </RouterLink>
       </nav>
 
-      <button class="back-link" @click="router.push('/')">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5m0 0 6-6m-6 6 6 6" />
-        </svg>
-        返回前台
-      </button>
+      <div class="side-footer">
+        <button class="back-link" @click="router.push('/me')">我的写作台</button>
+        <button class="back-link" @click="router.push('/')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5m0 0 6-6m-6 6 6 6" />
+          </svg>
+          返回前台
+        </button>
+      </div>
     </aside>
 
     <div class="admin-main">
       <header class="admin-topbar">
         <h1>{{ currentTitle }}</h1>
-        <span class="topbar-hint">当前无认证，写操作按匿名放行（待后续补充）</span>
+        <div class="topbar-right">
+          <span class="who">
+            <span class="who-email">{{ auth.user?.email }}</span>
+            <span class="who-role">{{ auth.role }}</span>
+          </span>
+          <button class="btn-logout" @click="onLogout">退出登录</button>
+        </div>
       </header>
 
       <div class="admin-content">
@@ -178,10 +201,14 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
   padding: var(--space-3);
+  border: none;
+  background: transparent;
   font-size: 13px;
   color: var(--text-subtle);
-  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  cursor: pointer;
   transition: color var(--transition-fast);
 }
 .back-link:hover {
@@ -210,9 +237,44 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   color: var(--text-strong);
   margin: 0;
 }
-.topbar-hint {
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.3;
+}
+.who-email {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.who-role {
   font: var(--text-caption);
   color: var(--text-subtle);
+}
+.btn-logout {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-default);
+  background: transparent;
+  cursor: pointer;
+}
+.btn-logout:hover {
+  border-color: #e35151;
+  color: #e35151;
+}
+
+.side-footer {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .admin-content {
@@ -267,7 +329,7 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   .admin-topbar {
     padding: var(--space-5) var(--space-4) var(--space-3);
   }
-  .topbar-hint {
+  .who {
     display: none;
   }
   .admin-content {

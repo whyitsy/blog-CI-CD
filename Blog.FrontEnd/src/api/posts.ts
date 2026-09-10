@@ -16,13 +16,25 @@ export function getPosts(query: PostQuery): Promise<PagedResult<PostListItemDto>
     pageSize: query.pageSize ?? 12,
     categoryId: query.categoryId,
     tagId: query.tagId,
+    collectionId: query.collectionId,
+    authorId: query.authorId,
     keyword: query.keyword,
     includeUnpublished: query.includeUnpublished,
+    mine: query.mine,
   })
 }
 
+/** 公开详情：**会**让浏览量 +1，用于读者看的文章页 */
 export function getPostDetail(id: string): Promise<PostDetailDto> {
   return get(`/api/posts/${id}`)
+}
+
+/**
+ * 只读详情：**不会**让浏览量 +1，供管理端/编辑器取数据（含 version）用。
+ * 需要登录。用于修掉「后台点一次编辑就 +1」造成的浏览量失真（见 docs/business.md Q12）。
+ */
+export function getPostDetailReadonly(id: string): Promise<PostDetailDto> {
+  return get(`/api/posts/${id}/readonly`)
 }
 
 export function searchPosts(keyword: string, page = 1, pageSize = 12): Promise<PagedResult<PostListItemDto>> {

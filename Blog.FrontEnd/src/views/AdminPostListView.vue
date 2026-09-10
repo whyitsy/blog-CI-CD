@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { deletePost, getPostDetail, getPosts, publishPost } from '@/api/posts'
+import { deletePost, getPostDetailReadonly, getPosts, publishPost } from '@/api/posts'
 import type { PagedResult, PostListItemDto } from '@/types'
 
 const PAGE_SIZE = 20
@@ -51,7 +51,8 @@ async function withVersion<T>(p: PostListItemDto, fn: (version: number) => Promi
   busyId.value = p.id
   errorMsg.value = ''
   try {
-    const detail = await getPostDetail(p.id)
+    // 用只读端点取 version，避免「取一次就 +1」污染浏览量
+    const detail = await getPostDetailReadonly(p.id)
     await fn(detail.version)
     await load()
   } catch (e) {
