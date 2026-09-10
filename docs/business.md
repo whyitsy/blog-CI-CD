@@ -1,29 +1,34 @@
 # 博客系统 业务文档
 
-> 版本：v2.0 ｜ 编写日期：2026-09-10
-> 依据：`docs/01-需求分析与实现方案.md`、`补充具体说明.md`、以及对当前仓库实际代码的核查
-> 配套文档：[backend.md](./backend.md) ｜ [frontend.md](./frontend.md) ｜ [suggestion.md](./suggestion.md)
+> 版本：v3.0 ｜ 编写日期：2026-09-10
+> 本文基于**已拍板的决策**（见 [tech.md](./tech.md)）与对仓库实际代码的核查重新编写。
+> 配套文档：[tech.md](./tech.md) ｜ [backend.md](./backend.md) ｜ [frontend.md](./frontend.md) ｜ [suggestion.md](./suggestion.md)
 >
-> **状态标记约定**：`[已实现]` 代码已在仓库中落地 ｜ `[计划中]` 有需求或设计但未实现 ｜ `[已废弃]` 曾有设计但已被替代
-> **优先级约定**：P0 阻塞上线/正确性 ｜ P1 重要但不阻塞 ｜ P2 锦上添花
-> **证据约定**：所有结论标注文件路径（必要时含行号）。无法从代码确认的一律标 `TODO`，不做推断。
+> **状态标记**：`[已实现]` 代码已落地 ｜ `[已决定]` 已拍板待实施 ｜ `[计划中]` 已规划未决策 ｜ `[已废弃]` 已弃用
+> **优先级**：P0 阻塞上线 ｜ P1 重要不阻塞 ｜ P2 长期
 
 ---
 
 ## 1. 博客定位
 
-个人技术博客，面向「一人写作、公开阅读」的单作者场景。
+**多作者技术博客平台**，前后端分离。访客可自由阅读，作者登录后撰写自己的文章，管理员登录后管理全站。
 
-| 维度 | 内容 | 依据 |
+### 1.1 定位的关键变化
+
+> **本项目已从「单作者博客」重新定位为「多作者博客」。**
+> 依据：Q3 决策「本项目应该是多作者博客而不是单一作者」。
+> 这推翻了早期需求文档中「单人博客」的隐含前提，因此下列设计随之调整：
+> `Author` 可被管理员增删改、文章归属需要越权校验、草稿需要权限保护（Q7）、需要专栏组织内容。
+
+| 维度 | 内容 | 状态 |
 |---|---|---|
-| 形态 | 前后端分离 SPA + REST API | `docs/05-系统架构与设计文档.md:11-13` |
-| 内容载体 | Markdown 文章（前端渲染） | `Blog.FrontEnd/src/views/PostDetailView.vue:4,26-27`（marked + DOMPurify） |
-| 视觉风格 | 「Aurora（极光）」深色优先设计体系，支持明暗切换 | `Blog.FrontEnd/src/styles/tokens.css:4-84`、`Blog.FrontEnd/src/stores/app.ts:6-20` |
-| 评论方案 | 外挂 giscus（GitHub Discussions），非自建 | `Blog.FrontEnd/src/components/common/GiscusComments.vue:12-31` |
-
-**定位判断的依据**：种子数据只预置了 1 个作者（`Blog.Backend/Blog.Infrastructure/Persistence/BlogDbContext.cs:123-134`，`Name = "kky"`），
-前端注释亦写明「当前无认证，单人博客」(`Blog.BackEnd` 见 `Blog.FrontEnd/src/router/index.ts:20-21`)。
-因此系统当前是**单作者博客**，不是多用户内容平台。
+| 形态 | 前后端分离 SPA + REST API | `[已实现]` |
+| 内容载体 | Markdown 文章（前端渲染 + DOMPurify 消毒） | `[已实现]` |
+| 评论 | 外挂 giscus（GitHub Discussions），本站不存评论数据 | `[已实现]` |
+| 作者规模 | **多作者**，每篇文章归属一个 `Author` | `[已决定]` |
+| 内容组织 | 分类、标签、**专栏（Collection）** | 专栏 `[已决定]` |
+| 账号体系 | `User`（后台账号）与 `Author`（内容署名）**分离** | `[已决定]` |
+| 视觉风格 | Aurora 深色优先，支持明暗切换 | `[已实现]` |
 
 ---
 
@@ -31,25 +36,72 @@
 
 ### 2.1 目标用户
 
-| 用户群 | 诉求 | 当前满足度 |
+| 用户群 | 核心诉求 | 状态 |
 |---|---|---|
-| 站点访客（未登录读者） | 浏览文章、按分类/标签筛选、搜索、看归档、评论 | `[已实现]` 全部具备 |
-| 博主（内容作者） | 写作、发布/下架、管理分类标签、改站点配置 | `[已实现]` 功能具备，但**无身份校验** |
-| 博客访客中的评论者 | 发表评论 | `[已实现]` 但由 giscus/GitHub 承担，本站无评论数据 |
+| 匿名访客 | 浏览、筛选、搜索、看归档、评论 | `[已实现]`（搜索待优化） |
+| 作者（Author） | 撰写与管理自己的文章、维护个人资料 | `[已决定]` 需实现认证 |
+| 管理员（Admin） | 管理账号、作者、全部内容与站点配置 | `[已决定]` 需实现认证 |
+| 评论者 | 发表评论 | `[已实现]`（由 giscus/GitHub 承担） |
 
-### 2.2 用户角色
+### 2.2 用户角色与职责边界
 
-| 角色 | 说明 | 实现状态 |
+```mermaid
+flowchart TB
+  subgraph Content["博客内容层（Content）"]
+    A["Author<br/>署名对象"]
+    P["Post"]
+    C["Category"]
+    T["Tag"]
+    CO["Collection 专栏"]
+    A --- P
+    P --- C
+    P --- T
+    P --- CO
+  end
+  subgraph Account["账号层（Account）"]
+    U["User<br/>登录凭据 + 角色"]
+  end
+  U -.->|"可选关联<br/>User.AuthorId"| A
+  U -->|"CreatedByUserId<br/>记录创建者"| P
+```
+
+**核心澄清（Q3 决策的落地）**：
+
+| 概念 | 定位 | 说明 |
 |---|---|---|
-| 匿名访客 | 可读全部已发布内容；可发评论（经 giscus） | `[已实现]` |
-| 博主/管理员 | 可调用全部写接口（发文、发布/下架、软删除、分类标签 CRUD、站点配置、文件上传） | `[已实现，但无鉴权]` |
-| 注册用户 | — | `[计划中]` 见 `docs/01-需求分析与实现方案.md:168`「无认证模块：本期管理类接口（写操作）不做用户体系」 |
-| 审核员 | — | `[计划中]` 需求中未出现，见 §7 风险 |
+| **`Author`** | **内容属性**，与 `Post`/`Tag`/`Category` 同层 | 只有展示字段（Name/Email/Avatar/Bio），**无任何凭据**。可被管理员直接创建 |
+| **`User`** | **账号**，系统的操作者 | 含 `Email`/`PasswordHash`/`Role`/`IsActive`。用于登录 |
+| 二者关系 | **可选的弱关联** | 一个 `User` 可关联到一个 `Author`（表示「我就是这个署名者」）；也允许存在没有 `User` 的 `Author`（历史作者、只署名不登录） |
 
-> **关键事实**：后端**不存在任何认证/授权机制**。检索 `Authorize|Authentication|Jwt|Bearer|Identity|AddAuthorization` 在 `Blog.Backend/**/*.cs` 中
-> 无任何业务命中（仅 EF 迁移里出现无关的 `UseIdentityByDefaultColumns`，指自增列）。
-> `Blog.Backend/Blog.WebApi/Program.cs:65` 调用了 `app.UseAuthorization()`，但**未注册任何认证方案，也未在任何控制器上标注 `[Authorize]`**。
-> 即：**当前所有管理类写接口对匿名访客完全开放**。
+> **推论**：`Author.Email` 与 `User.Email` 含义不同 —— 前者是展示用联系方式，后者是登录凭据。
+> **不应**对二者建立唯一约束联动，也不应允许「改 `User.Email` 自动改 `Author.Email`」。
+
+### 2.3 角色定义与权限矩阵
+
+`[已决定]` 先做两档角色。不引入细粒度 RBAC（无第三角色需求，YAGNI）。
+
+| 角色 | 说明 | 数量级 |
+|---|---|---|
+| **Admin** | 站点管理者 | 固定少数，**不开放注册** |
+| **Author** | 内容作者 | 可增长，是否开放注册见 [suggestion.md](./suggestion.md) T1 |
+| 匿名 | 未登录访客 | 无限 |
+
+| 操作 | 匿名 | Author（本人） | Author（他人） | Admin |
+|---|---|---|---|---|
+| 读已发布文章 | ✅ | ✅ | ✅ | ✅ |
+| **读草稿** | ❌ | ✅ | ❌ | ✅ |
+| 创建文章 | ❌ | ✅ | ✅ | ✅ |
+| 编辑 / 软删除文章 | ❌ | ✅ | ❌ | ✅ |
+| 发布 / 下架 | ❌ | ✅ | ❌ | ✅ |
+| 维护自己的 `Author` 资料 | ❌ | ✅ | ❌ | ✅ |
+| 增删改 `Author`（内容） | ❌ | ❌ | ❌ | ✅ |
+| 管理分类 / 标签 / 专栏 | ❌ | ❌ | ❌ | ✅ |
+| 站点配置 / 社交链接 | ❌ | ❌ | ❌ | ✅ |
+| 文件上传 | ❌ | ✅ | ✅ | ✅ |
+| 账号管理（`User`） | ❌ | ❌ | ❌ | ✅ |
+
+> `[待确认]` Author 能否创建分类/标签（[suggestion.md](./suggestion.md) T6）。
+> 建议**仅 Admin** —— 否则分类体系会被多个作者随意扩张。作者在编辑器中选择已有项。
 
 ---
 
@@ -57,317 +109,469 @@
 
 ### 3.1 业务范围（In Scope）
 
-- 文章：Markdown 正文、摘要、封面、分类、标签、发布状态、浏览量、字数
-- 分类 / 标签：两级独立的扁平分类法（无层级）
-- 站点展示配置：站点名、首屏打字机副标题、首屏背景图、建站日期
-- 社交链接：首屏底部图标（可排序、可隐藏）
-- 归档：按年月分组的发布时间轴
-- 搜索：标题/正文/分类名/标签名模糊匹配
+**内容管理**
+- 文章：Markdown 正文、摘要（自动 + 可覆盖）、封面、分类、标签、发布状态、浏览量、字数
+- 分类 / 标签：扁平结构，各自独立
+- **专栏（Collection）**：把多篇文章组织成一个系列（新增能力）
+- 作者：署名信息维护
+
+**账号与权限**（新增）
+- `User` 账号：JWT 登录、角色（Admin / Author）、启停用
+- 草稿权限保护
+
+**站点展示**
+- 站点配置：站点名、首屏打字机副标题、背景图、建站日期
+- 社交链接：可排序、可隐藏
+- 归档：按年月分组时间轴
 - 站点统计：建站天数、文章数、总字数、总浏览、标签数、分类数
-- 图片等文件上传与读取
-- 评论：委托给 giscus（站外）
+
+**其他**
+- 搜索：标题/正文/分类名/标签名匹配（**待优化为 GIN 索引**）
+- 文件上传与读取
+- 评论：委托 giscus（站外）
 
 ### 3.2 明确不在范围内（Out of Scope）
 
 | 项 | 说明 | 依据 |
 |---|---|---|
-| 用户注册 / 登录 | 无账号体系 | `docs/01-需求分析与实现方案.md:168` |
-| 站内评论存储 | 用 giscus 替代 | `docs/04-前端页面路由规划.md:48-69` |
-| 文章多级审核流 | 只有「草稿 ↔ 已发布」 | `Blog.Backend/Blog.Domain/Entities/Post.cs:64-73` |
-| 多作者协作 | 单一作者 | `BlogDbContext.cs:123-134` |
-| SEO 服务端渲染 | 纯 SPA | `Blog.FrontEnd/src/router/index.ts:3-4`（`createWebHistory`，无 SSR） |
-| 国际化 | 全站硬编码中文 | 检索 `vue-i18n|i18n` 无命中 |
-| 数据埋点 | 无任何统计 SDK | 检索 `gtag|analytics|umami` 无命中 |
+| 站内评论存储 | 用 giscus 替代 | 原始需求 |
+| 文章审核流 | `[已决定]` 目前不需要，引入多作者后再评估 | Q6 |
+| 国际化 / 多语言 | `[已决定]` 不需要 | Q10 |
+| SEO 优化 | `[已决定]` 本期不做，路径已规划 | Q11 / [tech.md](./tech.md) §6 |
+| 第三方 OAuth 登录 | `[已决定]` 后期再考虑 | Q2 |
+| OSS / CDN 迁移 | `[已决定]` 未来做，本期只保留扩展点 | Q9 |
+| 数据埋点 / 用户行为分析 | 未规划 | — |
+| 点赞 / 收藏 / 打赏 / 会员 / 付费 | 未规划 | — |
 
 ---
 
 ## 4. 核心业务流程
 
-> 图例：实线 = 已实现；`-.->` 虚线 = 未实现/计划中。
+> 图例：实线 = 已实现；虚线 = 已决定待实现。
 
-### 4.1 注册登录 `[计划中]`
+### 4.1 登录体系（前台 Author / 后台 User）
 
-**当前状态**：完全未实现。无用户表（`BlogDbContext.cs:14-19` 仅 6 个 DbSet，无 User/Account），
-无密码字段（`Author.cs:7-10` 只有 Name/Email/Avatar/Bio），无 token 处理（前端检索 `token|login|logout` 无命中）。
+`[已决定]` 两套登录入口，同构 JWT 机制，靠 `role` claim 区分。
 
 ```mermaid
-flowchart LR
-  A[访客] -.-> B[注册页<br/>未实现]
-  B -.-> C[POST /api/auth/register<br/>未实现]
-  C -.-> D[(Users 表<br/>不存在)]
-  A -.-> E[登录页<br/>未实现]
-  E -.-> F[签发 JWT<br/>未实现]
-  F -.-> G[前端存储 token<br/>未实现]
-  G -.-> H[路由守卫 /api 写接口鉴权<br/>未实现]
-  style B stroke-dasharray: 5 5
-  style C stroke-dasharray: 5 5
-  style D stroke-dasharray: 5 5
-  style E stroke-dasharray: 5 5
-  style F stroke-dasharray: 5 5
-  style G stroke-dasharray: 5 5
-  style H stroke-dasharray: 5 5
+flowchart TB
+  subgraph Front["前台 / Front（面向作者）"]
+    FL["/login<br/>作者登录"]
+    FR["/register<br/>作者注册"]
+    ME["/me<br/>我的文章 / 草稿箱 / 个人资料"]
+  end
+  subgraph Admin["后台 / Admin（面向管理者）"]
+    AL["/admin/login<br/>管理员登录"]
+    AM["/admin/users<br/>账号管理"]
+    AA["/admin/authors<br/>作者管理（内容）"]
+    AP["/admin/posts<br/>全部文章"]
+    AS["/admin/site<br/>站点配置"]
+  end
+
+  A1["Author 账号"] --> FL
+  A2["Admin 账号"] --> AL
+  FL --> L1["POST /api/auth/author/login"]
+  FR --> L2["POST /api/auth/author/register"]
+  AL --> L3["POST /api/auth/admin/login"]
+  L1 --> JWT["签发 JWT<br/>含 sub / role / exp"]
+  L2 --> JWT
+  L3 --> JWT
+  JWT --> G{"前端路由守卫<br/>按 role 分流"}
+  G -->|"role=Author"| Front
+  G -->|"role=Admin"| Admin
 ```
 
-### 4.2 发文（创建文章）`[已实现]`
+**为什么必须分成两套入口**：作者与管理员的生命周期与信任模型完全不同。
+作者可自助注册、数量会增长；管理员是运维者、数量固定且**绝不能开放注册**。
+混在同一登录页会导致「注册即成为管理员」这类严重越权。
 
-入口：`Blog.FrontEnd/src/views/AdminPostNewView.vue:12-24` → `Blog.FrontEnd/src/api/posts.ts:39-48` → `POST /api/posts`
-后端：`Blog.Backend/Blog.WebApi/Controllers/PostsController.cs:73-78` → `PostService.CreateAsync`（`Blog.Application/Services/Post/PostService.cs:85`）
+**前端落地方式**：单一 SPA + 角色路由守卫（`[已决定]`，理由见 [tech.md](./tech.md) §2.3）。
+
+#### 作者登录 / 注册时序
 
 ```mermaid
 sequenceDiagram
-  participant U as 博主
-  participant FE as PostEditor.vue
-  participant API as PostsController
+  participant A as 作者
+  participant FE as 前端
+  participant API as /api/auth/author/*
+  participant DB as PostgreSQL
+
+  alt 注册
+    A->>FE: 填写邮箱 / 密码
+    FE->>API: POST /register
+    API->>DB: 校验邮箱唯一
+    API->>API: 密码慢哈希（Argon2id / PBKDF2）
+    API->>DB: INSERT User(role=Author)
+    API-->>FE: JWT
+  else 登录
+    A->>FE: 填写邮箱 / 密码
+    FE->>API: POST /login
+    API->>DB: 按邮箱查 User
+    API->>API: 校验密码哈希（恒定时间比较）
+    alt 凭据正确且账号启用
+      API-->>FE: JWT + 过期时间
+      FE->>FE: 存入 localStorage
+    else 失败
+      API-->>FE: 4001 统一提示「邮箱或密码错误」
+    end
+  end
+```
+
+> **安全要点**：登录失败时**不要**区分「邮箱不存在」与「密码错误」，统一提示，避免账号枚举攻击。
+
+#### 管理员登录
+
+同构，但：**不允许注册端点**；管理员账号由已有管理员创建，或由部署时的种子数据初始化。
+
+#### 会话生命周期
+
+```mermaid
+sequenceDiagram
+  participant FE as 前端
+  participant H as http.ts
+  participant API as 后端
+
+  FE->>H: 发起受保护请求
+  H->>H: 注入 Authorization: Bearer token
+  H->>API: 请求
+  alt token 有效
+    API-->>FE: 业务数据
+  else token 过期 / 无效
+    API-->>H: 401 code=4010
+    H->>H: 清理本地凭证
+    H->>FE: 跳转登录页（保留 returnUrl）
+  else 无权限
+    API-->>H: 403 code=4030
+    H->>FE: 提示无权限
+  end
+```
+
+### 4.2 发文
+
+作者本人或管理员创建文章。
+
+```mermaid
+sequenceDiagram
+  participant U as Author / Admin
+  participant FE as PostEditor
+  participant API as POST /api/posts
   participant SVC as PostService
   participant DB as PostgreSQL
 
-  U->>FE: 填写标题/正文/分类/标签/封面
-  FE->>FE: 实时统计字数与预计阅读时长<br/>(PostEditor.vue:38-39)
-  FE->>API: POST /api/posts {title,content,coverImage,categoryId,tagIds,publish}
-  API->>SVC: CreateAsync(request)
-  SVC->>SVC: 校验标题/正文非空 (PostService.cs:217)
-  SVC->>DB: 解析默认作者 (ResolveDefaultAuthorIdAsync)
-  Note over SVC,DB: 无认证，取首个作者作为 AuthorId
-  SVC->>DB: INSERT Posts + PostTag
-  SVC->>SVC: Post 构造函数计算 Summary/WordCount<br/>(Post.cs:33-43,56-62)
-  SVC->>SVC: 失效缓存 posts:* 与 site:stats (PostService.cs:200-201)
-  SVC-->>API: PostDetailDto
-  API-->>FE: {code:0,data:...}
-  FE->>U: 跳转 /admin 列表
+  U->>FE: 标题 / 正文 / 分类 / 标签 / 专栏 / 封面 / 摘要
+  FE->>FE: 实时统计字数与预计阅读时长
+  FE->>API: 提交（含 Bearer token）
+  API->>API: 鉴权：角色必须是 Author 或 Admin
+  API->>SVC: CreateAsync
+  SVC->>SVC: 校验标题 / 正文
+  SVC->>DB: 解析 Author（Admin 可指定，Author 固定为自己）
+  SVC->>SVC: Summary 为空 → 自动截取；非空 → 用作者值
+  SVC->>SVC: 计算 WordCount
+  SVC->>DB: INSERT Posts + PostTag + PostCollection
+  SVC->>SVC: 失效缓存
+  SVC-->>FE: PostDetailDto
+  FE->>U: 跳转我的文章列表
 ```
 
-**业务规则**（来自代码）：
-- 摘要不是前端传入，而是**写入时按正文前 50 字截取**：`Post.SummaryLength = 50`（`Blog.Backend/Blog.Domain/Entities/Post.cs:8,56-62`）。注意：`PostDtos.cs:41` 的 `CreatePostRequest` 无 `Summary` 字段，前端 `PostEditor.vue` 的摘要输入框**不会提交**（`api/posts.ts:40-47` 只发 title/content/coverImage/categoryId/tagIds/publish）→ 这是一个前端表单与接口能力的落差，见 [suggestion.md](./suggestion.md)。
-- 字数 = 正文字符数（`Post.cs:58`），非单词数。
-- `IsPublished` 是**计算属性**（`Post.cs:16`），数据库中不存在该列，持久化的是 `PublishedAt`。
+**业务规则**：
 
-### 4.3 草稿 `[已实现]`
+| 规则 | 说明 | 状态 |
+|---|---|---|
+| 摘要 | **空 → 自动取正文前 N 字；非空 → 用作者填写的值，且更新时不重算** | `[已决定]`（Q5） |
+| 字数 | 正文字符数（非单词数） | `[已实现]` |
+| 作者归属 | Author 只能创建自己的文章；Admin 可指定任意 Author | `[已决定]` |
+| 专栏 | 可选，是否可多选待确认 | `[待确认]` T2 |
+| 发布状态 | 创建时可选择立即发布或存为草稿 | `[已实现]` |
 
-- 草稿 = `PublishedAt == null`（`Blog.Domain/Entities/Post.cs:16`）。
-- 创建时通过 `publish=false` 产生草稿；`CreatePostRequest.Publish` 默认 `true`（`PostDtos.cs:44`）。
-- 草稿仅对管理端列表可见：列表接口 `includeUnpublished=true`（`PostsController.cs:27`，前端 `api/posts.ts:20`）。
-- 公开列表在 SQL 层过滤：`PostQueryRepository.cs:24`（`if (!query.IncludeUnpublished)`）。
+### 4.3 草稿与草稿权限保护
 
-### 4.4 发布 / 下架 `[已实现]`
+`[已决定]` 草稿需权限保护（Q7）。
 
 ```mermaid
 stateDiagram-v2
   [*] --> 草稿: 创建且 publish=false
   [*] --> 已发布: 创建且 publish=true
-  草稿 --> 已发布: POST /api/posts/{id}/publish?publish=true
-  已发布 --> 草稿: POST /api/posts/{id}/publish?publish=false
-  已发布 --> [*]: DELETE（软删除）
-  草稿 --> [*]: DELETE（软删除）
-  note right of 已发布
-    Publish() 幂等：重复发布保留首次 PublishedAt
-    (Post.cs:64-68)
+  草稿 --> 已发布: 发布
+  已发布 --> 草稿: 下架
+  草稿 --> 已删除: 软删除
+  已发布 --> 已删除: 软删除
+  已删除 --> [*]
+
+  note right of 草稿
+    可见范围：
+    · 作者本人 ✅
+    · 管理员 ✅
+    · 其他作者 ❌
+    · 匿名访客 ❌
   end note
 ```
 
-- 前端入口：`AdminPostListView.vue` 的「发布/下架」按钮，先 `GET /api/posts/{id}` 取 `version` 再调发布接口（`withVersion` 辅助函数）。
-- **副作用**：管理端取 version 会调详情接口，而详情接口**每次调用都会让浏览量 +1**（`PostService.cs:54-68`）。即**博主每次在后台点发布/删除，都会给自己的文章 +1 浏览量**。这是已知设计副作用，见 [suggestion.md](./suggestion.md)。
+**当前的安全缺口（`[已实现]` 但需修复）**：
+`GET /api/posts?includeUnpublished=true` 是**公开 query 参数**且无鉴权（`Blog.Backend/Blog.WebApi/Controllers/PostsController.cs:27`），
+任何匿名访客都能读到全部草稿。必须随认证一起修复。
 
-### 4.5 评论 `[已实现，委托外部]`
+**保护方案**：
+
+| 措施 | 说明 |
+|---|---|
+| 端点鉴权 | `includeUnpublished=true` 时要求已认证，且角色为 Author 或 Admin |
+| **数据过滤** | Author 只能看到 `AuthorId == 自己` 的草稿；Admin 可见全部 |
+| 详情端点 | 读取草稿详情同样需要鉴权 + 归属校验 |
+
+### 4.4 发布 / 下架
+
+- `Publish()` 幂等：重复发布保留首次 `PublishedAt`（`Blog.Domain/Entities/Post.cs:64-68`），避免影响归档排序
+- 需携带 `version` 做乐观锁，冲突返回 409 / code 4090
+
+```mermaid
+sequenceDiagram
+  participant FE as 前端
+  participant API as POST /api/posts/{id}/publish
+  participant SVC as PostService
+  participant DB as PostgreSQL
+
+  FE->>API: ?version=N&publish=true（+ Bearer token）
+  API->>API: 鉴权 + 归属校验
+  API->>SVC: PublishAsync(id, version, publish)
+  SVC->>DB: GetByIdAsync
+  SVC->>SVC: ApplyOptimisticVersion(entity, N)
+  SVC->>SVC: Publish() / Unpublish()
+  SVC->>DB: UPDATE ... WHERE Id=@id AND Version=N
+  alt 命中 1 行
+    SVC->>SVC: 失效缓存
+    SVC-->>FE: 200 新 version
+  else 命中 0 行
+    SVC-->>FE: 409 code=4090
+  end
+```
+
+### 4.5 评论
+
+`[已实现]` 由 giscus 承担，本站**不存评论数据**（无 Comment 表）。
 
 ```mermaid
 flowchart LR
-  A[PostDetailView] --> B[挂载 GiscusComments.vue]
-  B --> C[注入 giscus.app/client.js]
-  C --> D[GitHub Discussions<br/>repo: whyitsy/blog-comment]
-  D --> E[按 pathname 映射讨论串]
-  F[主题切换] --> G[MutationObserver 监听 data-theme] --> B
+  A["PostDetailView"] --> B["GiscusComments.vue"]
+  B --> C["注入 giscus.app/client.js"]
+  C --> D["GitHub Discussions<br/>repo: whyitsy/blog-comment"]
+  D --> E["按 URL pathname 映射讨论串"]
+  F["主题切换"] --> G["MutationObserver 监听 data-theme"] --> B
 ```
 
-- 本站**不存储任何评论数据**，无 Comments 表（`BlogDbContext.cs:14-19`）。
-- 评论串按 URL pathname 映射（`GiscusComments.vue:21` `data-mapping: 'pathname'`）→ **文章 URL 变更会导致评论失联**。
-- 主题联动实现见 `GiscusComments.vue:11,35-40`。
+**风险**：评论串按 URL pathname 映射（`Blog.FrontEnd/src/components/common/GiscusComments.vue:21`），
+**文章 URL 变更会导致历史评论失联**。
+若将来需要站内评论（可关联 Author、支持权限），需新建 Comment 实体并重新设计。
 
-### 4.6 搜索 `[已实现]`
+### 4.6 搜索（待优化）
+
+`[已实现]` 但性能与效果均不足；`[已决定]` 用 **PostgreSQL + GIN 索引**优化。
 
 ```mermaid
 sequenceDiagram
   participant U as 访客
-  participant Modal as SearchModal.vue
+  participant FE as SearchModal
   participant API as GET /api/posts/search
   participant DB as PostgreSQL
 
-  U->>Modal: 打开搜索弹窗（NavBar 按钮）
-  U->>Modal: 输入关键词
-  Modal->>Modal: 300ms 防抖 (SearchModal.vue:35-43)
-  Modal->>API: ?keyword=xx&page=1&pageSize=10
-  API->>DB: WHERE Title ILIKE OR Content ILIKE OR Category.Name OR Tags.Name
-  Note over DB: PostQueryRepository.cs:110-113<br/>实现为 ToLower().Contains(...)
-  DB-->>Modal: PagedResult<PostCardDto>
-  Modal->>U: 精简卡片列表
-  U->>Modal: 点击结果
-  Modal->>U: 跳转 /post/:id
+  U->>FE: 输入关键词
+  FE->>FE: 300ms 防抖
+  FE->>API: ?keyword=x&page=1&pageSize=10
+  API->>DB: 按 GIN 索引匹配 + 相关度排序
+  DB-->>FE: 分页结果
+  FE->>U: 结果列表
 ```
 
-- 限流：搜索规则 `Capacity=20, TokensPerSecond=2`（`Blog.WebApi/appsettings.Development.json:27-34`）。
-- 注意：匹配用的是 `ToLower().Contains()`（`PostQueryRepository.cs:110-113`），**不是 PostgreSQL 全文检索**，大数据量下会全表扫描。见 §9 与 [backend.md](./backend.md) P1。
+**现状问题**（详见 [tech.md](./tech.md) §5）：
 
-### 4.7 订阅 `[计划中]`
+| # | 问题 | 影响 |
+|---|---|---|
+| 1 | `ToLower().Contains()` 生成 `LIKE '%x%'` | 前导通配符使索引失效 → **全表扫描** |
+| 2 | 无相关度排序 | 最相关的结果可能排在最后一页 |
+| 3 | 中文不分词 | 词序不同就搜不到 |
 
-**当前状态**：无 RSS/Atom 输出、无邮件订阅、无推送。仅有一个 `rss` 社交图标作为**可点击外链**（`SocialIcon.vue:12,18` 是图标 path 定义，非订阅功能）。
+**优化方案**（`[已决定]`，两阶段）：
 
-```mermaid
-flowchart LR
-  A[访客] -.-> B[RSS/Atom 订阅<br/>未实现]
-  A -.-> C[邮件订阅<br/>未实现]
-  A -.-> D[Web Push<br/>未实现]
-  style B stroke-dasharray: 5 5
-  style C stroke-dasharray: 5 5
-  style D stroke-dasharray: 5 5
-```
+| 阶段 | 方案 | 说明 |
+|---|---|---|
+| **一（本次）** | `pg_trgm` + GIN 索引 | 环境已有该扩展（PG 18.6 实测），中文天然支持，`ILIKE` 可走索引，`similarity()` 可排序 |
+| 二（未来） | 真 FTS（`zhparser` / `pg_jieba`） | 需要分词扩展（当前镜像**没有**），支持同义词与词干还原 |
 
-### 4.8 后台管理 `[已实现]`
+### 4.7 订阅
 
-七大模块，路由见 `Blog.FrontEnd/src/router/index.ts:22-34`：
+`[计划中]` 未实现。当前 `SocialIcon` 里的 `rss` 只是**可配置的外链图标**，不是订阅功能。
 
-| 模块 | 路由 | 视图 | 后端接口 |
-|---|---|---|---|
-| 文章管理 | `/admin` | `AdminPostListView.vue` | `GET/POST/PUT/DELETE /api/posts*` |
-| 新建文章 | `/admin/posts/new` | `AdminPostNewView.vue` | `POST /api/posts` |
-| 编辑文章 | `/admin/posts/:id/edit` | `AdminPostEditView.vue` | `PUT /api/posts/{id}` |
-| 分类管理 | `/admin/categories` | `AdminCategoryListView.vue` | `GET/POST/PUT/DELETE /api/categories*` |
-| 标签管理 | `/admin/tags` | `AdminTagListView.vue` | `GET/POST/PUT/DELETE /api/tags*` |
-| 用户资料 | `/admin/profile` | `AdminProfileView.vue` | `GET /api/authors`、`PUT /api/authors/{id}` |
-| 网站配置 | `/admin/site` | `AdminSiteConfigView.vue` | `GET/PUT /api/site/config`、`GET/PUT/DELETE /api/site/social-links*` |
+| 项 | 状态 |
+|---|---|
+| RSS / Atom | `[计划中]` |
+| 邮件订阅 | `[计划中]` |
+| Web Push | `[计划中]` |
 
-管理端布局为独立 `AdminLayout.vue`（侧边栏 + 顶栏），≤880px 折叠为横向 tab（`AdminLayout.vue` 的 `@media (max-width: 880px)`）。
-顶栏固定提示「当前无认证，写操作按匿名放行（待后续补充）」。
+### 4.8 后台管理
 
-**并发的写法约定**：所有管理端写操作需回传 `version`（乐观锁），冲突返回 `409` + `code=4090`。详见 [backend.md](./backend.md) §7.3。
+`[已实现]` 现有模块 + `[已决定]` 新增模块。
+
+| 模块 | 路由 | 状态 |
+|---|---|---|
+| 文章管理（全部） | `/admin` | `[已实现]` |
+| 新建 / 编辑文章 | `/admin/posts/new`、`/admin/posts/:id/edit` | `[已实现]` |
+| 分类管理 | `/admin/categories` | `[已实现]` |
+| 标签管理 | `/admin/tags` | `[已实现]` |
+| 网站配置 | `/admin/site` | `[已实现]` |
+| 单作者资料（现有） | `/admin/profile` | `[需调整]` 按新模型并入作者管理 |
+| **管理员登录** | `/admin/login` | `[已决定]` |
+| **账号管理（`User`）** | `/admin/users` | `[已决定]` |
+| **作者管理（`Author` 内容）** | `/admin/authors` | `[已决定]` |
+| **专栏管理** | `/admin/collections` | `[已决定]` |
+
+外加前台作者工作区：`/me`（我的文章、草稿箱、个人资料）、`/login`、`/register`。
 
 ---
 
 ## 5. 领域模型
 
-### 5.1 实体关系
+### 5.1 实体关系总览
 
 ```mermaid
 erDiagram
-  Author ||--o{ Post : "撰写 (SetNull)"
+  User ||--o| Author : "可选关联 User.AuthorId"
+  User ||--o{ Post : "创建者 CreatedByUserId"
+  Author ||--o{ Post : "署名 (SetNull)"
   Category ||--o{ Post : "归类 (SetNull)"
-  Post }o--o{ Tag : "PostTag 多对多"
-  SocialLink }o--|| SiteConfig : "同属站点配置域(无外键)"
+  Post }o--o{ Tag : "PostTag"
+  Post }o--o{ Collection : "PostCollection"
 
+  User {
+    Guid Id PK
+    string Email "唯一 登录凭据"
+    string PasswordHash "慢哈希"
+    string Role "Admin or Author"
+    bool IsActive
+    Guid AuthorId FK "可空 关联署名"
+    DateTimeOffset LastLoginAt
+    int Version "乐观锁"
+  }
   Author {
     Guid Id PK
-    string Name "max100 required"
-    string Email "max100 required"
+    string Name "max100"
+    string Email "max100 仅展示用"
     string Avatar "max200"
     string Bio "max500"
-    DateTimeOffset CreatedAt
-    bool IsDeleted
-    int Version "乐观锁"
+    int Version
   }
   Post {
     Guid Id PK
-    string Title "max200 required"
-    string Content "required"
-    string Summary "max120 写入时截前50字"
-    string CoverImage "max500"
-    Guid AuthorId FK
+    string Title "max200"
+    string Content "Markdown"
+    string Summary "自动或覆盖"
+    bool IsSummaryAuto "是否自动生成"
+    string CoverImage
+    Guid AuthorId FK "可空"
+    Guid CreatedByUserId FK "可空"
     Guid CategoryId FK "可空"
-    DateTimeOffset PublishedAt "null=草稿"
+    DateTimeOffset PublishedAt "null 即草稿"
     int ViewCount
-    int WordCount "字符数"
-    DateTimeOffset UpdatedAt
-    bool IsDeleted
+    int WordCount
+    int Version
+  }
+  Collection {
+    Guid Id PK
+    string Title
+    string Slug "唯一"
+    string Description
+    string CoverImage
+    int SortOrder
+    bool IsPublished
     int Version
   }
   Category {
     Guid Id PK
-    string Name "max100 唯一(未删除)"
+    string Name "唯一(未删除)"
     int Version
   }
   Tag {
     Guid Id PK
-    string Name "max50 唯一(未删除)"
-    int Version
-  }
-  SiteConfig {
-    Guid Id PK
-    string Key "max100 唯一(未删除)"
-    string Value "字符串或JSON"
-    string Description "max500"
-    int Version
-  }
-  SocialLink {
-    Guid Id PK
-    string Name "max50"
-    string Icon "max50 前端图标key"
-    string Url "max500"
-    int SortOrder
-    bool IsVisible
+    string Name "唯一(未删除)"
     int Version
   }
 ```
 
-字段与约束来源：`Blog.Backend/Blog.Infrastructure/Persistence/BlogDbContext.cs:33-104`。
-实体定义：`Blog.Domain/Entities/{Post,Author,Category,Tag,SiteConfig,SocialLink}.cs`、`Base/BaseEntity.cs`。
+字段约束依据：现有实体见 `Blog.Backend/Blog.Domain/Entities/*.cs` 与 `Blog.Backend/Blog.Infrastructure/Persistence/BlogDbContext.cs:33-104`。
 
-### 5.2 用户模型
+### 5.2 用户模型（`User` vs `Author`）
 
-`[已实现但名称易误解]` 系统里的「用户」实体叫 `Author`，**只有展示信息，没有任何凭据字段**：
+| 对比项 | `User` | `Author` |
+|---|---|---|
+| 层次 | 账号层 | 内容层（与 Post/Tag/Category 同层） |
+| 用途 | 登录、鉴权、审计 | 文章署名展示 |
+| 凭据字段 | ✅ `PasswordHash` | ❌ 无 |
+| 可被匿名读取 | ❌ 绝不 | ✅ 可（文章详情需显示作者名与头像） |
+| 是否可自助注册 | Author 角色可；Admin 不可 | 不是账号，不涉及注册 |
+| 能否删除 | 建议禁用（`IsActive=false`），**不物理删除**（影响审计） | 可软删除 |
+| 生命周期 | 随账号 | 随内容（可先建作者再建账号） |
 
-- 字段：Name / Email / Avatar / Bio（`Blog.Domain/Entities/Author.cs:7-10`）
-- 无 `PasswordHash`、无 `Username`、无 `Role`、无 `LastLoginAt`
-- 无 `User` 表（`BlogDbContext.cs:14-19`）
+> **为什么 `Author` 可被匿名读取而 `User` 不能**：`PostDetailDto` 需要返回 `AuthorName`/`AuthorAvatar`
+> 用于文章详情页展示（`Blog.Application/Services/Post/PostDtos.cs:29-30`）。
+> 而 `User` 含凭据相关信息，**任何 DTO 都不得直接暴露 `PasswordHash`**。
 
-因此 **「用户」在当前系统中等价于「博主个人资料」**，不是账号。前端 `/admin/profile` 页面即编辑这条记录（取列表首条，见 `AdminProfileView.vue` 的 `authors[0]`）。
+### 5.3 权限模型
 
-### 5.3 权限模型 `[计划中]`
+`[已决定]` **两档角色 + 资源归属校验**，不引入 RBAC 权限表。
 
-无 RBAC/ABAC，无权限表，无角色枚举。所有接口权限相同。
+```mermaid
+flowchart TB
+  R["请求到达"] --> A1{"已认证？"}
+  A1 -->|否| AU["401 / code 4010"]
+  A1 -->|是| A2{"角色判定"}
+  A2 -->|Admin| OK["放行全部"]
+  A2 -->|Author| A3{"资源归属校验"}
+  A3 -->|"Post.AuthorId 等于当前 AuthorId"| OK
+  A3 -->|"他人资源 / 仅管理员可操作的类型"| A4["403 / code 4030"]
+```
 
-### 5.4 评论模型 `[计划中]`
+| 层 | 手段 |
+|---|---|
+| 认证 | JWT Bearer |
+| 角色判定 | `role` claim（Admin / Author） |
+| 资源归属 | 查询时按 `AuthorId` 过滤 + 写操作前校验 |
+| 传输 | HTTPS（生产 Nginx 终结） |
 
-无实体、无表。评论数据在 GitHub Discussions。
+### 5.4 评论模型
 
-### 5.5 点赞 / 收藏 `[计划中]`
+`[计划中]` 无实体、无表。评论数据在 GitHub Discussions。
 
-无任何相关字段或表。文章只有 `ViewCount`（`Post.cs:17`）。
+### 5.5 互动模型
+
+| 类型 | 状态 |
+|---|---|
+| 浏览量 `ViewCount` | `[已实现]`（但有「后台操作污染」问题，见 §10.1 R2） |
+| 点赞 / 收藏 / 打赏 | `[计划中]` 未规划 |
 
 ---
 
 ## 6. 内容生命周期
 
-> 需求原文（`docs/01-需求分析与实现方案.md:168` 及 `补充具体说明.md`）**未提出审核环节**。
-> 因此下图中的「审核」为 `[计划中]`，不是已实现能力的缺失，而是需求外延。
-
 ```mermaid
 stateDiagram-v2
-  [*] --> 草稿: 新建（publish=false）
-  草稿 --> 已发布: 发布 / 新建时 publish=true
+  [*] --> 草稿: 新建 publish=false
+  [*] --> 已发布: 新建 publish=true
+  草稿 --> 已发布: 发布（需鉴权 + 归属校验）
   已发布 --> 草稿: 下架
-  草稿 --> 已删除: 软删除
-  已发布 --> 软删除: 软删除
-  已删除 --> [*]
-
-  state 待审核 {
-    [*] --> 待审
-    待审 --> 通过
-    待审 --> 驳回
-  }
-  note right of 待审核
-    计划中：当前无审核状态字段
-    Post 仅用 PublishedAt 判草稿
-  end note
+  草稿 --> 软删除: 删除（作者本人或管理员）
+  已发布 --> 软删除: 删除
+  软删除 --> [*]
 ```
 
-| 阶段 | 实现方式 | 代码依据 |
+| 阶段 | 实现方式 | 依据 |
 |---|---|---|
-| 草稿 | `PublishedAt IS NULL` | `Post.cs:16` |
-| 发布 | `PublishedAt = DateTimeOffset.UtcNow`，幂等保留首次时间 | `Post.cs:64-68` |
+| 草稿 | `PublishedAt IS NULL`，**权限受限可见** | `Post.cs:16` + Q7 |
+| 发布 | `PublishedAt = UtcNow`，幂等保留首次时间 | `Post.cs:64-68` |
 | 下架 | `PublishedAt = NULL` | `Post.cs:70-73` |
-| 归档 | **不是状态**，是查询视图：按年月分组已发布文章 | `PostQueryRepository.GetArchivesAsync`、`PostDtos.cs:57-59` |
-| 修改 | 更新时刷新 `UpdatedAt`、`Summary`、`WordCount` | `Post.cs:45-53` |
+| 归档 | **不是状态**，是查询视图：已发布文章按年月分组 | `PostQueryRepository.GetArchivesAsync` |
+| 修改 | 刷新 `UpdatedAt`；`Summary` 仅在为空时重算 | `Post.cs:45-53` + Q5 |
 | 删除 | 软删除：`IsDeleted=true` + `DeletedAt`，全局查询过滤器屏蔽 | `BaseEntity.cs:26-30`、`BlogDbContext.cs:57` |
-| 审核 | 未实现 | 无相关字段 |
+| 审核 | `[已决定]` 本期不做（Q6） | — |
 
-**归档与删除的语义澄清**：归档页 `/archive` 展示的是**全部已发布文章**按时间倒序分组，文章不会因「归档」而失去任何状态。
+> **归档语义澄清**：归档页展示**全部已发布文章**，文章不会因「归档」失去任何状态。
 
 ---
 
@@ -375,166 +579,183 @@ stateDiagram-v2
 
 ### 7.1 公开端 `[已实现]`
 
-| 功能 | 路由 / 接口 | 前端文件 | 状态 |
-|---|---|---|---|
-| 首页 Hero（打字机、浮动动画、社交图标） | `/` | `components/hero/HeroSection.vue` | `[已实现]` |
-| 首页文章卡片列表 + 分页 | `/` `?page=` | `views/HomeView.vue`、`components/post/PostCardList.vue` | `[已实现]` |
-| 文章详情（Markdown、TOC、阅读进度、浏览量） | `/post/:id` | `views/PostDetailView.vue` | `[已实现]` |
-| 评论 | 详情页内 | `components/common/GiscusComments.vue` | `[已实现]`（外挂） |
-| 标签墙 | `/tags` | `views/TagsView.vue` | `[已实现]` |
-| 分类墙 | `/categories` | `views/CategoriesView.vue` | `[已实现]` |
-| 归档时间轴 | `/archive` | `views/ArchiveView.vue` | `[已实现]` |
-| 通用筛选列表（tag/category/keyword + 分页） | `/posts` | `views/PostListView.vue` | `[已实现]` |
-| 搜索弹窗（300ms 防抖） | 导航栏触发 | `components/search/SearchModal.vue` | `[已实现]` |
-| 明暗主题切换（localStorage 持久化） | — | `stores/app.ts:6-20` | `[已实现]` |
-| Footer 站点统计 | `GET /api/site/stats` | `components/common/SiteFooter.vue` | `[已实现]` |
-
-### 7.2 管理端 `[已实现]`
-
-| 功能 | 状态 | 备注 |
+| 功能 | 路由 | 说明 |
 |---|---|---|
-| 文章列表（含草稿、分页、骨架屏） | `[已实现]` | 窄屏退化为可折叠卡片 |
-| 新建 / 编辑文章 | `[已实现]` | 编辑器内可内联新建分类/标签 |
-| 发布 / 下架 | `[已实现]` | 走 `POST /api/posts/{id}/publish` |
-| 软删除文章 | `[已实现]` | `DELETE /api/posts/{id}?version=` |
-| 分类 CRUD | `[已实现]` | 行内改名 |
-| 标签 CRUD | `[已实现]` | 行内改名 |
-| 用户资料编辑（含头像上传） | `[已实现]` | `PUT /api/authors/{id}` |
-| 站点配置编辑 | `[已实现]` | 4 个配置项逐项乐观锁 |
-| 社交链接增删改（含显示/隐藏、排序） | `[已实现]` | `PUT` 批量 + `DELETE` 单条 |
-| 文件上传 | `[已实现]` | `POST /api/files/upload` |
+| 首页 Hero | `/` | 打字机副标题、浮动动画、社交图标 |
+| 首页文章列表 | `/` `?page=` | 卡片 + 分页 + 骨架屏 |
+| 文章详情 | `/post/:id` | Markdown、TOC、阅读进度、浏览量、giscus |
+| 标签墙 | `/tags` | 按钮 + 文章数 |
+| 分类墙 | `/categories` | 同上 |
+| 归档时间轴 | `/archive` | 年/月分组 |
+| 筛选列表 | `/posts` | `?tagId=&categoryId=&keyword=&page=` |
+| 搜索弹窗 | 导航栏触发 | 300ms 防抖（**待优化**） |
+| 明暗主题 | — | localStorage 持久化 |
+| Footer 统计 | — | `GET /api/site/stats` |
 
-### 7.3 后端横切能力 `[已实现]`
+`[已决定]` 新增：**专栏页** `/collections`、`/collections/:slug`。
 
-| 能力 | 实现 | 依据 |
+### 7.2 作者工作区 `[已决定]`
+
+| 功能 | 路由 |
+|---|---|
+| 作者登录 | `/login` |
+| 作者注册 | `/register` |
+| 我的文章（含草稿箱） | `/me` |
+| 写文章 | `/me/posts/new` |
+| 编辑我的文章 | `/me/posts/:id/edit` |
+| 个人资料 | `/me/profile` |
+
+### 7.3 管理端
+
+| 功能 | 路由 | 状态 |
 |---|---|---|
-| 统一响应体 | `{code,message,data}` | `Blog.Application/Common/ApiResponse.cs:6-25` |
-| 全局异常 → 状态码映射 | 业务异常 400/404、并发 409、其他 500 | `WebApi/Middleware/ExceptionHandlingMiddleware.cs:31-48` |
-| 乐观锁 | int Version + SQL 条件更新 | `Domain/Entities/Base/BaseEntity.cs:14-20`、`Infrastructure/Persistence/Repositories/BaseRepository.cs:66-74` |
-| 缓存（三防 + 降级） | Memory / Redis 可切换 | `Infrastructure/DependencyInjection.cs:41-55`、`Caching/RedisCacheService.cs` |
-| 令牌桶限流 | Redis Lua + 内存降级 | `WebApi/Middleware/RateLimitingMiddleware.cs` |
-| 日志 | Serilog 控制台 + 按天滚动文件 | `WebApi/Program.cs:17-27` |
-| 慢查询拦截 | >500ms（见 [backend.md](./backend.md) §6） | `Infrastructure/Persistence/Interceptors/SlowQueryInterceptor.cs` |
-| 文件存储 | 本地磁盘 + 扩展名白名单 + 体积上限 | `Infrastructure/Files/LocalFileStorageService.cs:13-17` |
-| 软删除 | 全局查询过滤器 | `BlogDbContext.cs:57,67,76,84,93,103` |
+| 文章管理（全部，含他人草稿） | `/admin` | `[已实现]` |
+| 新建 / 编辑文章 | `/admin/posts/*` | `[已实现]` |
+| 分类管理 | `/admin/categories` | `[已实现]` |
+| 标签管理 | `/admin/tags` | `[已实现]` |
+| 网站配置 | `/admin/site` | `[已实现]` |
+| **管理员登录** | `/admin/login` | `[已决定]` |
+| **账号管理** | `/admin/users` | `[已决定]` |
+| **作者管理** | `/admin/authors` | `[已决定]` |
+| **专栏管理** | `/admin/collections` | `[已决定]` |
+
+### 7.4 后端横切能力 `[已实现]`
+
+| 能力 | 说明 |
+|---|---|
+| 统一响应体 | `{code,message,data}` |
+| 全局异常映射 | 业务 400/404、并发 409、限流 429、其他 500 |
+| 乐观锁 | int Version + SQL 条件更新 |
+| 缓存三档 | Redis / Memory / Null（`[已决定]` 保留并按性能对比测试） |
+| 令牌桶限流 | Redis Lua + 内存降级 |
+| 日志 | Serilog 控制台 + 按天滚动文件 |
+| 慢查询拦截 | >500ms |
+| 文件存储 | 本地磁盘 + 白名单 + 体积限制 + 防穿越 |
+| 软删除 | 全局查询过滤器 |
 
 ---
 
 ## 8. 非功能需求
 
-> 下表区分「当前实际水平」与「目标」。目标若原文档未给出数值，则标 `TODO` —— 原需求文档未定义量化 SLA。
+> 目标值若原需求未给出量化标准，标注 `TODO`（不编造数字）。
 
 ### 8.1 性能
 
-| 指标 | 当前实现 | 目标 | 状态 |
+| 指标 | 当前 | 目标 | 状态 |
 |---|---|---|---|
-| 列表页响应 | 页级缓存 5 分钟（`PostService.cs:13`） | TODO（无量化基线） | `[已实现]` |
-| 详情页响应 | 详情缓存 10 分钟（`PostService.cs:14`） | TODO | `[已实现]` |
-| 归档页响应 | 缓存 30 分钟（`PostService.cs:15`） | TODO | `[已实现]` |
-| 分类/标签列表 | 缓存 30 分钟（`CategoryService.cs:12`） | TODO | `[已实现]` |
-| 站点配置 | 缓存 1 小时（`SiteService.cs:12`） | TODO | `[已实现]` |
-| 站点统计 | 缓存 10 分钟（`SiteService.cs:13`） | TODO | `[已实现]` |
-| 文章列表查询 | 走 `PublishedAt` / `IsDeleted+PublishedAt` 索引 | — | `[已实现]` `BlogDbContext.cs:40-42` |
-| 搜索 | `ToLower().Contains()`，**无专用索引** | TODO | `[已实现但需优化]` |
+| 列表页 | 缓存 5 分钟 | TODO | `[已实现]` |
+| 详情页 | 缓存 10 分钟 | TODO | `[已实现]` |
+| 归档页 | 缓存 30 分钟 | TODO | `[已实现]` |
+| 分类/标签 | 缓存 30 分钟 | TODO | `[已实现]` |
+| 站点配置 | 缓存 1 小时 | TODO | `[已实现]` |
+| 站点统计 | 缓存 10 分钟 | TODO | `[已实现]` |
+| 文章列表查询 | 走 `PublishedAt` / `IsDeleted+PublishedAt` 索引 | — | `[已实现]` |
+| **搜索** | **全表扫描** | 走 GIN 索引 | `[已决定]` §4.6 |
+| **三档缓存性能对比** | 未测 | 需产出基线数据 | `[已决定]` Q8 |
 | 慢查询可观测 | >500ms 记录 | — | `[已实现]` |
 
 ### 8.2 安全
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 身份认证 | `[计划中]` | **完全缺失**，见 §2.2 |
-| 接口鉴权 | `[计划中]` | 写接口匿名可调 |
-| 输入校验 | `[部分实现]` | 名称/标题/正文非空与长度校验（如 `PostService.cs:217`、`CategoryService.ValidateName`） |
-| XSS 防护（前端） | `[已实现]` | `DOMPurify.sanitize`（`PostDetailView.vue:27`） |
-| 文件上传白名单 | `[已实现]` | 11 种扩展名（`LocalFileStorageService.cs:13-17`） |
-| 文件大小限制 | `[已实现]` | 应用层 10MB（`appsettings.Development.json` `FileStorage.MaxFileSize`）+ 请求体 50MB（`FilesController.cs:27`） |
-| 目录穿越防护 | `[已实现]` | `TryResolveSafePath`（`LocalFileStorageService.cs:54`） |
-| SQL 注入 | `[已实现]` | 全程 EF Core 参数化 |
-| CSRF | `[不适用]` | 无 Cookie 会话；跨域仅放开配置的源（`Program.cs:33-40`） |
-| 限流 | `[已实现]` | 令牌桶，规则见 `appsettings.Development.json:23-52` |
-| 密钥管理 | `TODO` | 连接串明文在 `appsettings.Development.json:8-10`，生产方案未定义 |
-| 权限越权测试 | `[计划中]` | 无鉴权故无从测试 |
+| **身份认证** | `[已决定]` **当前完全缺失** | 实施 JWT（Q2） |
+| **接口鉴权** | `[已决定]` 当前完全缺失 | 写接口匿名可调，属 P0 |
+| **草稿保护** | `[已决定]` 当前缺失 | §4.3 |
+| 密码存储 | `[已决定]` | 需慢哈希（Argon2id / PBKDF2），**绝不用 MD5/SHA** |
+| Token 防失效 | `[已决定]` | 短有效期 + 可选 Redis 黑名单 |
+| 输入校验 | `[部分实现]` | Service 层手工校验 + EF 长度约束 |
+| XSS（前端） | `[已实现]` | DOMPurify（`PostDetailView.vue:27`） |
+| 文件白名单 | `[已实现]` | 11 种扩展名 |
+| 文件大小限制 | `[已实现]` | 应用层 10MB + 请求体 50MB |
+| 目录穿越防护 | `[已实现]` | `TryResolveSafePath` |
+| SQL 注入 | `[已实现]` | EF Core 参数化 |
+| CSRF | `[不适用]` | 无 Cookie 会话（token 存 localStorage 可保持此结论） |
+| 限流 | `[已实现]` | 令牌桶；**注意 PUT/DELETE 仅受 default 规则约束** |
+| 传输加密 | `[计划中]` | 生产需 HTTPS（Nginx 终结） |
+| 密钥管理 | `[已决定]` | 需外置（环境变量 / 密钥库），连接串不可明文入库 |
+| CSP（内容安全策略） | `[计划中]` | token 存 localStorage 时，CSP 是重要补偿控制 |
+| 审计日志 | `[计划中]` | 依赖认证完成后才有「操作人」概念 |
 
 ### 8.3 SEO
 
-| 项 | 状态 | 依据 |
-|---|---|---|
-| 服务端渲染 / 预渲染 | `[计划中]` | SPA，`createWebHistory`，无 SSR |
-| 静态 `<title>` | `[已实现]` | `Blog.FrontEnd/index.html:13` = `kky's blog` |
-| 详情页动态 title | `[已实现]` | `PostDetailView.vue:36` |
-| `meta description` | `[计划中]` | 未设置 |
-| Open Graph / Twitter Card | `[计划中]` | 未设置 |
-| 结构化数据 JSON-LD | `[计划中]` | 未设置 |
-| `sitemap.xml` / `robots.txt` | `[计划中]` | `Blog.FrontEnd/public/` 下只有 `favicon.svg`、`icons.svg` |
-| 语义化标签 | `[部分实现]` | 使用了 `header/nav/main/footer/aside/article` 等 |
-| 图片 `alt` | `[部分实现]` | 部分设置（如 `AdminProfileView` 头像），未全站核查 |
+`[已决定]` **本期不做**（Q11）。完整技术分析、问题清单、三条实现路径与重构步骤见 [tech.md](./tech.md) §6。
+
+现状摘要：纯 SPA，首屏 HTML 无内容；无 `meta description` / OG / sitemap / robots；通配路由产生软 404。
 
 ### 8.4 可用性
 
-| 项 | 状态 | 依据 |
-|---|---|---|
-| 响应式 | `[已实现]` | 断点 640 / 767 / 880 / 1023 / 1199 px，见各组件 `@media` |
-| 暗色 / 亮色 | `[已实现]` | 默认暗色，`tokens.css:4` 与 `@media (prefers-color-scheme: light)` |
-| 骨架屏 | `[已实现]` | `PostCardList.vue`、`AdminPostListView.vue` |
-| 空状态 / 错误提示 | `[已实现]` | 各列表页有 empty/err 分支 |
-| 加载失败降级 | `[部分实现]` | store 层 `catch(() => null)` 兜底（`stores/site.ts:16-20`） |
-| 动画降级 | `[已实现]` | `prefers-reduced-motion: reduce`（`styles/global.css:170-180`） |
-| 键盘可达性 / 焦点管理 | `TODO` | 弹窗焦点陷阱、Esc 关闭等未系统实现 |
-| ARIA | `[部分实现]` | 全站 8 处 `aria-*`/`role`，覆盖不全 |
-| 后端健康检查 | `[部分实现]` | `GET /` 返回运行状态（`Program.cs:68`） |
+| 项 | 状态 |
+|---|---|
+| 响应式（640/767/880/1023/1199 断点） | `[已实现]` |
+| 暗色/亮色 + 系统偏好跟随 | `[已实现]` |
+| 骨架屏 | `[部分实现]`，`[已决定]` 规划多套骨架（E11） |
+| 空状态 / 错误提示 | `[已实现]` |
+| 动画降级（prefers-reduced-motion） | `[已实现]` |
+| 键盘可达 / 焦点管理 | `[计划中]` |
+| ARIA 覆盖 | `[部分实现]` |
+| i18n | `[已决定]` 不需要（Q10） |
 
 ---
 
 ## 9. 未来可拓展业务
 
-> 成本为相对估算（以当前单人开发节奏为基准）；风险指对现有代码/数据的冲击面。
-
 | # | 方向 | 优先级 | 理由 | 成本 | 风险 |
 |---|---|---|---|---|---|
-| 1 | **认证与授权** | **P0** | 写接口当前完全裸奔，任何访客可删文章、改站点配置。是唯一「不上线则不可公开部署」的问题 | 中（JWT + 用户表 + 前端守卫，约 3–5 天） | 中：需新增 Users 表与迁移；`Author` 概念要从「资料」升级为「账号」，会影响 `/api/authors` 语义与前端资料页 |
-| 2 | 多作者 | P1 | 领域模型已天然支持（`Post.AuthorId`、`Author.Posts`），但缺少归属校验与作者页 | 低—中（接口按作者过滤 + `/author/:id` 页） | 低：表结构无需大改；但需与 P0 一起做，否则任何人都能冒名发文 |
-| 3 | 专栏 / 系列 | P1 | 长文博客的常见组织诉求，可复用 Category 的成熟模式 | 低（新增 Collection 实体 + Post.CollectionId + 排序字段） | 低：纯增量 |
-| 4 | 全文检索升级 | P1 | 当前 `ToLower().Contains()` 在数据量上千后会明显变慢且无法相关度排序 | 中（PostgreSQL `tsvector` + GIN 索引，或引入 Meilisearch） | 中：需数据回填与迁移；中文分词需 `zhparser` 或改用外部引擎 |
-| 5 | RSS / Atom | P1 | 技术博客的标准订阅方式，实现成本极低、收益明显 | 低（1–2 个只读端点 + XML 序列化） | 低 |
-| 6 | 评论自建 | P2 | 当前依赖 giscus，数据在站外、且受 pathname 变更影响 | 高（Comment 表 + 反垃圾 + 通知） | 高：引入 UGC 后需处理垃圾、审核、举报，运维成本显著上升 |
-| 7 | 点赞 / 收藏 | P2 | 提升互动，但单人博客收益有限 | 低—中（需处理匿名去重） | 低：需 IP/指纹去重，注意隐私 |
-| 8 | 邮件订阅 / 会员 / 付费 | P2 | 与「个人技术博客」定位偏离较大，且需要支付与合规 | 高（邮件服务、订单、退款、发票） | 高：涉及资金与合规 |
-| 9 | 打赏 | P2 | 实现简单（静态收款码/外链） | 极低 | 低 |
-| 10 | 多语言 i18n | P2 | 当前全站硬编码中文；若定位中文技术博客则无必要 | 中（提取文案 + vue-i18n + 内容多语言表） | 中：**文章内容**多语言是真正难点，需额外字段或翻译表 |
-| 11 | 个性化推荐 | P2 | 单作者博客内容量有限，推荐收益低 | 高（需行为埋点 + 召回排序） | 高：需先补埋点，且小数据量下效果差 |
-| 12 | SEO 增强（SSR/预渲染 + meta） | P1 | 搜索流量对技术博客是主要入口，当前 SPA 对爬虫不友好 | 中（Nuxt/SSG 迁移或 prerender 插件 + meta 管理） | 中：SSR 迁移会触及全部页面与 `localStorage` 用法（`stores/app.ts:8` 在模块初始化即读 localStorage，SSR 下会报错） |
+| 1 | **认证 + 授权（JWT，双角色）** | **P0** | 写接口与草稿当前完全裸奔，是唯一「不修就不能公开部署」的问题 | 中 | 中：新增 `User`/`Collection` 表与迁移；`Author` 语义调整 |
+| 2 | **草稿权限保护** | **P0** | 属 #1 子集，但即使认证延后也应先关闭 `includeUnpublished` 匿名访问 | 低 | 低 |
+| 3 | **建立测试工程** | **P0** | 当前零测试零 CI，后续重构无安全网 | 中 | 低（纯增量） |
+| 4 | **敏感配置外置** | **P0** | 连接串明文入库 | 低 | 低 |
+| 5 | **搜索 GIN 索引优化** | P1 | 当前全表扫描 + 无相关度排序（§4.6） | 中 | 中：需迁移与数据回填；`Content` 索引膨胀 |
+| 6 | **专栏功能** | P1 | 已决定实现 | 中 | 低：纯增量（新增 2 张表） |
+| 7 | **修复后台污染浏览量** | P1 | 后台取 version 即 +1，数据失真 | 低 | 低：新增不计数只读端点（Q12） |
+| 8 | **缓存 key 规范落地 + 版本号失效** | P1 | 现规范缺版本号，schema 变更无法安全失效 | 低 | 低 |
+| 9 | **多实例无 Redis 启动期校验** | P1 | 静默降级在多实例下使限流失效 | 低 | 低 |
+| 10 | **CI 流水线** | P1 | 构建/类型检查全靠手工 | 低 | 低 |
+| 11 | **`.env` 分环境** | P1 | 当前无 `.env`，代理目标写死在 `vite.config.ts` | 极低 | 低 |
+| 12 | **RSS / Atom** | P1 | 技术博客标准订阅方式，成本极低 | 低 | 低 |
+| 13 | **骨架屏组件化（多套）** | P2 | E11 决定 | 低 | 低 |
+| 14 | **分类/标签样式补齐** | P2 | E13：分类样式缺失 | 极低 | 低 |
+| 15 | **SEO（预渲染 + meta + sitemap）** | P2 | 已决定本期不做，路径见 [tech.md](./tech.md) §6 | 中 | 中 |
+| 16 | **OSS / CDN 迁移** | P2 | 已决定未来做；需先落地「只存 storage key」 | 中 | 中：需数据迁移策略 |
+| 17 | **第三方 OAuth 登录** | P2 | Q2：后期考虑，可与 giscus 的 GitHub 身份统一 | 中 | 中 |
+| 18 | **站内评论** | P2 | 现依赖 giscus，数据在站外且 URL 变更即失联 | 高 | 高：UGC 带来垃圾/审核/举报成本 |
+| 19 | **点赞 / 收藏 / 打赏** | P2 | 互动增强，小规模博客收益有限 | 低—中 | 低 |
+| 20 | **邮件订阅 / 会员 / 付费** | P2 | 与「技术博客」定位偏离，且涉及资金与合规 | 高 | 高 |
+| 21 | **推荐 / 埋点** | P2 | 需先有行为数据；小数据量下效果差 | 高 | 高 |
+| 22 | **国际化** | — | `[已决定]` 不做（Q10） | — | — |
 
 ---
 
 ## 10. 风险与未决问题
 
-### 10.1 已确认风险（有代码依据）
+### 10.1 已确认风险（有代码或决策依据）
 
 | # | 风险 | 影响 | 依据 |
 |---|---|---|---|
-| R1 | **管理接口无鉴权** | 最高。任何人可删文、改配置、上传文件 | §2.2 检索结论 |
-| R2 | 后台操作会污染浏览量 | 博主点发布/删除时调用详情接口，浏览量 +1 | `PostService.cs:54-68` 与 `AdminPostListView.vue` 的 `withVersion` |
-| R3 | 搜索走全表 `ToLower().Contains` | 数据量增长后性能急剧下降 | `PostQueryRepository.cs:110-113` |
-| R4 | 评论绑定 URL pathname | 文章 slug/URL 变更导致历史评论「消失」 | `GiscusComments.vue:21` |
-| R5 | 种子作者头像是失效路径 | `/media/avatar-default.png` 不由后端提供（文件接口是 `/api/files/**`） | `BlogDbContext.cs:128` vs `FilesController.cs:9` |
-| R6 | 数据库连接串明文入库 | 生产凭据泄露风险 | `appsettings.Development.json:8-10` |
-| R7 | 无测试项目 | 回归全靠人工，重构风险高 | 全仓库检索无 `*Test*` 项目，`Blog.Backend.slnx` 仅 4 个工程 |
-| R8 | 无 CI/CD | 构建/校验完全依赖本地手工 | 无 `.github/workflows`、无 `Jenkinsfile`、无 `Dockerfile` |
-| R9 | 草稿经公开接口泄露 | `includeUnpublished=true` 是公开参数，无鉴权即可读到草稿 | `PostsController.cs:27`（无 `[Authorize]`） |
-| R10 | 摘要字段前端不可用 | 编辑器有摘要输入框但不提交，实际摘要由后端截前 50 字 | `PostEditor.vue` 摘要输入 vs `api/posts.ts:40-47` |
+| R1 | **管理接口完全无鉴权** | 最高。匿名可删文、改配置、上传文件 | `Program.cs:65` 有 `UseAuthorization` 但无 `UseAuthentication`；无 `[Authorize]` |
+| R2 | **后台操作污染浏览量** | 每次点发布/删除都给自己文章 +1（管理端需调详情接口取 version） | `PostService.cs:54-68` |
+| R3 | **草稿经公开参数泄露** | `includeUnpublished=true` 匿名可读全部草稿 | `PostsController.cs:27` |
+| R4 | **搜索全表扫描** | 数据量增长后性能急剧下降，且无相关度排序 | `PostQueryRepository.cs:107-116` |
+| R5 | **评论绑定 URL pathname** | 文章 URL 变更导致历史评论失联 | `GiscusComments.vue:21` |
+| R6 | **种子作者头像失效** | `/media/avatar-default.png` 不由后端提供 | `BlogDbContext.cs:128` vs `FilesController.cs:9` |
+| R7 | **连接串明文入库** | 生产凭据泄露风险 | `appsettings.Development.json:8-10` |
+| R8 | **零测试 + 零 CI** | 回归全靠人工，重构风险高 | `Blog.Backend.slnx` 仅 4 工程；无 CI 配置 |
+| R9 | **摘要前端不可用** | 编辑器有输入框但 `api/posts.ts` 不提交，后端也无字段 | `PostEditor.vue` vs `api/posts.ts:40-47` |
+| R10 | **`Posts.AuthorId` 非空却配 `SetNull`** | 语义矛盾；硬删除会抛错 | `BlogDbContext.cs:44-47` |
+| R11 | **缓存 key 无版本号** | schema 变更时旧缓存无法安全失效 | `CacheKeys.cs` |
+| R12 | **多实例下静默降级 Redis** | 限流阈值变成「配置值 × 实例数」，形同虚设 | Redis 降级逻辑 |
+| R13 | **`PUT`/`DELETE` 仅受 default 限流规则** | 写操作限流比 `POST` 宽松 | `appsettings.Development.json` 的 `write` 规则只匹配 POST |
+| R14 | **数据库存完整 URL** | 迁 OSS 时历史数据 URL 全部失效 | 见 [tech.md](./tech.md) §3.5 |
 
-> R9 与 R1 是同一根因的两面，应合并修复。
+> R1 与 R3 同源，应合并修复。R11/R14 属「现在不做，将来代价更高」，建议尽早调整。
 
-### 10.2 未决问题（需人工确认）
+### 10.2 未决问题
 
-详见 [suggestion.md](./suggestion.md)。摘要如下：
+全部集中在 [suggestion.md](./suggestion.md)。本轮新增 T1–T10（见 [tech.md](./tech.md) §9），
+最关键的三项：
 
-| # | 问题 | 为何无法从代码确定 |
+| # | 问题 | 为何关键 |
 |---|---|---|
-| Q1 | 上线目标环境与部署方式（IIS / Nginx / 容器） | 仓库无部署产物或编排文件 |
-| Q2 | 认证方案选型（JWT / Cookie / OIDC 第三方） | 需求文档仅写「后续可加 JWT」（`docs/01:168`），未定稿 |
-| Q3 | 是否需要审核流 | 需求文档完全未提，属功能外延 |
-| Q4 | 生产环境的 Redis 是否强制 | 代码支持降级，但生产是否启用未定义 |
-| Q5 | 图片存储是否迁移到 OSS/CDN | `docs/02-API接口清单.md:66` 称「便于后续替换为 OSS/CDN」，但无计划 |
-| Q6 | 是否需要保留 `/media/...` 历史路径 | 影响 R5 的修法（改种子数据 vs 加兼容路由） |
-| Q7 | 摘要应由作者手填还是自动截取 | 前端表单与后端行为不一致，需产品决策 |
+| T1 | 作者注册是否开放 | 决定是否需要 `/register`、防滥用与审核策略 |
+| T2 | 一篇文章能否属于多个专栏 | 决定数据模型是 `PostCollection`（多对多）还是 `Post.CollectionId` |
+| T7 | Token 有效期与是否要 Refresh Token | 安全性与体验的权衡，影响前端拦截逻辑 |
