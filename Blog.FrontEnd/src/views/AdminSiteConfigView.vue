@@ -17,8 +17,6 @@ interface SocialRow {
   sortOrder: number
   isVisible: boolean
   version: number
-  /** 已从列表移除、待保存时执行软删除 */
-  removed?: boolean
 }
 
 const loading = ref(true)
@@ -37,7 +35,6 @@ const basic = ref({
   heroBackground: '',
   foundingDate: '',
 })
-const originalBasic = ref({ ...basic.value })
 
 async function loadConfig() {
   const cfg = await getSiteConfig()
@@ -48,7 +45,6 @@ async function loadConfig() {
     heroBackground: cfg.heroBackground ?? '',
     foundingDate: cfg.foundingDate ? cfg.foundingDate.slice(0, 10) : '',
   }
-  originalBasic.value = { ...basic.value }
 }
 
 const versionOf = (key: string) => versions.value[key] ?? 0
@@ -94,7 +90,9 @@ async function saveBasic() {
   errorMsg.value = ''
   basicMsg.value = ''
   try {
-    // 逐项提交，每项独立乐观锁；某项失败不会影响其他项
+    // 逐项提交、仅取最后一次响应（每次 PUT 都会返回全量配置与最新 versions），
+    // 避免每项都重新 GET 一次。
+    // 版本号取 GET 下发的 versions；缺失（=0）表示该 Key 尚未创建，后端按新增处理。
     await updateSiteConfig(SiteConfigKey.SiteName, basic.value.siteName.trim(), versionOf(SiteConfigKey.SiteName))
     await updateSiteConfig(SiteConfigKey.HeroSubtitles, JSON.stringify(subtitles.value), versionOf(SiteConfigKey.HeroSubtitles))
 
@@ -104,9 +102,13 @@ async function saveBasic() {
       basic.value.foundingDate ? `${basic.value.foundingDate}T00:00:00+08:00` : '',
       versionOf(SiteConfigKey.FoundingDate),
     )
-    await updateSiteConfig(SiteConfigKey.HeroBackground, basic.value.heroBackground.trim(), versionOf(SiteConfigKey.HeroBackground))
-
-    await loadConfig()
+    // 最后一项的响应即包含全部配置项的最新版本号
+    const latest = await updateSiteConfig(
+      SiteConfigKey.HeroBackground,
+      basic.value.heroBackground.trim(),
+      versionOf(SiteConfigKey.HeroBackground),
+    )
+    versions.value = latest.versions ?? {}
     basicMsg.value = '已保存'
     await site.refreshAll()
   } catch (e) {
@@ -145,7 +147,6 @@ function addRow() {
 }
 
 function markRemoved(row: SocialRow) {
-  row.removed = true
   rows.value = rows.value.filter((r) => r !== row)
 }
 

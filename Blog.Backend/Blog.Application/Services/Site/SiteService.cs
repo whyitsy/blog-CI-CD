@@ -52,6 +52,10 @@ namespace Blog.Application.Services.Site
                 items.ToDictionary(i => i.Key, i => i.Version, StringComparer.OrdinalIgnoreCase));
         }
 
+        /// <summary>
+        /// 写入单个配置项：Key 尚未存在时按新增处理（忽略 version），已存在时走乐观锁。
+        /// 已存在的项若 version 非法会给出 4001，避免仓储抛参数异常而变成 5000。
+        /// </summary>
         public async Task<SiteConfigDto> UpdateConfigAsync(UpdateSiteConfigRequest request, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(request.Key))
@@ -66,6 +70,9 @@ namespace Blog.Application.Services.Site
             }
             else
             {
+                if (request.Version < 1)
+                    throw new BusinessException("缺少合法的版本号，无法进行并发控制", ErrorCodes.InvalidArgument);
+
                 _configs.ApplyOptimisticVersion(config, request.Version);
                 config.Update(request.Value);
             }
