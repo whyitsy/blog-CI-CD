@@ -19,6 +19,9 @@
    `App.vue` 只有顶层 `RouterView`。管理端**不套**公开 NavBar/Footer（NavBar 是 fixed，混用会遮挡页面内容）
 
 ## 环境备忘（重要）
+- **行尾统一 LF**：仓库根已加 `.gitattributes`（`* text=auto eol=lf` + 图片二进制）。
+  编辑文件时请保持 LF，**不要整文件覆盖写回 CRLF**，否则会产生整文件 diff。
+  检查：`git ls-files --eol | grep w/crlf`（正常应为空）。
 - **WSL 直连 localhost 不通**（WSL2 localhost 转发未生效）：必须用 Windows curl 验证接口
   `/mnt/c/Windows/System32/curl.exe -s --noproxy '*' http://localhost:5131/api/...`（`--noproxy` 与 `*` 要分成两个参数）
 - **dotnet 不在 PATH**：用 `/mnt/c/Program Files/dotnet/dotnet.exe`

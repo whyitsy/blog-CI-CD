@@ -1,0 +1,13 @@
+# 统一行尾：仓库内一律使用 LF，避免跨平台（Windows/WSL）编辑产生整文件 CRLF 差异
+* text=auto eol=lf
+
+# 二进制资源不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.svg text eol=lf
+*.pdf binary
+*.zip binary
