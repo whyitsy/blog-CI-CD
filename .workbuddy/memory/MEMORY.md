@@ -138,3 +138,21 @@
 - **测试脚本自身的坑**：`innerText` 不含 placeholder；无 `type` 的 input 不会被 `input[type=text]` 选中；
   错用 `document.querySelectorAll('input[type=text]')` 会误判为「元素不存在」
 - **连字符与编码**：`docker exec pgsql psql -c "SELECT "Email" ..."` 需转义双引号（PG 标识符大小写敏感）
+
+## 前端骨架屏与徽章样式（2026-09-11 已实现）
+- 骨架屏组件在 `components/skeleton/`：PostCard / PostListRow / PostDetail / Archive / Taxonomy / Form
+  - 已接入 PostCardList、AdminPostListView、MyPostListView、PostDetailView、ArchiveView、
+    TagsView、CategoriesView、AdminSiteConfigView、AdminProfileView
+  - 全局基元在 `styles/global.css`：`.shimmer` / `.sk-line` / `.sk-block` / `.w-*` / `.sk-stack`
+    （原来在 4 个视图各写一份完全相同的 CSS）
+- 徽章：`.tag-badge`（细边框圆角、青色）与 `.category-badge`（实心渐变方块）均为**全局类**，不组件化
+  - ⚠️ scoped 选择器带 `data-v`，**优先级高于全局类**；若本地也写 background 会盖掉全局样式
+    （PostCard 的 `.cover-category` 就踩过，现只保留定位）
+
+## ⚠️ 验证骨架屏/瞬时状态的方法（避坑）
+- 骨架屏是瞬时状态，数据一回来就消失，直接截图抓不到
+- **正确做法**：CDP `Page.addScriptToEvaluateOnNewDocument`，把 `/api/posts*` 的 `fetch`
+  替换成永不 resolve 的 Promise，稳定复现 loading 态后再断言/截图
+- **错误做法**：`Fetch.enable` + glob `*/api/posts*` —— 会**误伤 JS 模块 `src/api/posts.ts`**，
+  导致页面白屏并得出「骨架没生效」的错误结论（我为此白排查了数轮）
+- 同理，`Network.emulateNetworkConditions` 加高延迟会连 JS bundle 一起卡住，页面直接空白

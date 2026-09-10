@@ -524,30 +524,43 @@ flowchart TB
 
 `[已决定]` **不做**（Q10）。全站文案中文硬编码，`index.html:2` 为 `lang="zh-CN"`。
 
-### 6.10 骨架屏规划（`[已决定]` E11）
+### 6.10 骨架屏（`[已实现]` E11）
 
-现状只有 `PostCardList.vue` 内联的卡片骨架（12 个占位）与管理端列表的行骨架。
+`[已实现]` 已组件化，放在 `components/skeleton/`：
 
-`[已决定]` 规划为**多套独立组件**，放在 `components/skeleton/`：
+| 组件 | 适用页面 | 形态 | 已接入 |
+|---|---|---|---|
+| `PostCardSkeleton` | 首页 / 列表页 | 卡片栅格（与 `PostCard` 尺寸对齐） | `PostCardList` |
+| `PostListRowSkeleton` | 管理端 / 我的文章 | 表格行（列数与真实表一致） | `AdminPostListView`、`MyPostListView` |
+| `PostDetailSkeleton` | 文章详情 | 标题 + 元信息 + 正文段落 + 侧栏 TOC | `PostDetailView` |
+| `ArchiveSkeleton` | 归档 | 年节点 + 文章行 | `ArchiveView` |
+| `TaxonomySkeleton` | 标签墙 / 分类墙（将来专栏墙） | 按钮网格 | `TagsView`、`CategoriesView` |
+| `FormSkeleton` | 站点配置 / 个人资料 | 若干字段 + 保存按钮 | `AdminSiteConfigView`、`AdminProfileView` |
 
-| 组件 | 适用页面 | 形态 |
-|---|---|---|
-| `PostCardSkeleton` | 首页 / 列表页 | 卡片栅格（复用现有实现） |
-| `PostListRowSkeleton` | 管理端 / 我的文章表格 | 行占位 |
-| `PostDetailSkeleton` | 文章详情 | 标题 + 正文段落 + 侧栏 TOC |
-| `ArchiveSkeleton` | 归档 | 时间轴节点 |
-| `TaxonomySkeleton` | 标签墙 / 分类墙 / 专栏墙 | 按钮/卡片网格 |
-| `SiteConfigSkeleton` | 站点配置表单 | 表单域占位 |
-| `ProfileSkeleton` | 个人资料 / 用户编辑 | 头像 + 表单 |
+**顺带消除的重复（F4 的一部分）**：`shimmer` 动画与 `.sk-line` / `.w-*` 原本在
+`ArchiveView`、`CategoriesView`、`TagsView`、`PostCardList` **各写一份完全相同的 CSS**，
+现已提升为 `styles/global.css` 的全局基元（`.shimmer` / `.sk-line` / `.sk-block` / `.w-*` / `.sk-stack`）。
 
-**收益**：统一视觉、消除各视图重复的 loading 分支（F4）、便于按页面调优感知性能。
+**收益**：统一视觉、消除各视图重复的 loading 分支、按页面调优感知性能。
 
-### 6.11 标签 / 分类样式（`[已决定]` E13）
+> **验证提示**：骨架屏是**瞬时**状态，数据请求一返回就消失，直接截图通常抓不到。
+> 验证时可用 CDP 的 `Page.addScriptToEvaluateOnNewDocument` 把 `/api/posts*` 的
+> `fetch` 换成永不 resolve 的 Promise，从而稳定复现 loading 态再断言。
+> ⚠️ 不要用 `Fetch.enable` + glob `*/api/posts*` 拦截——它会**误伤 JS 模块**
+> `src/api/posts.ts`，导致页面白屏并得出「骨架未生效」的错误结论。
 
-- **不组件化**：不规划 `TagBadge.vue` / `CategoryBadge.vue` 组件
-- **保留全局样式**：沿用 `styles/global.css:111-122` 的 `.tag-badge` 全局类
-- **待补齐**：**分类样式当前缺失**。需要为分类补一个与标签并列但可区分的全局类（如 `.category-badge`），
-  视觉上应能一眼区分二者（建议用不同色调或加前缀图标）
+### 6.11 标签 / 分类样式（`[已实现]` E13）
+
+- **不组件化**：没有 `TagBadge.vue` / `CategoryBadge.vue`（遵循 E13 决定）
+- **全局样式**：`styles/global.css` 中 `.tag-badge` 与 `.category-badge` 并列
+- **已补齐分类样式**：`.category-badge` 为实心渐变方块（洋红→紫），
+  与 `.tag-badge`（细边框圆角、青色系）**一眼可区分**
+- **可点击**：`PostCard` 封面上的分类与详情页的分类均为 `<RouterLink>`，
+  点击跳到该分类的筛选列表（`/posts?categoryId=…`），并带 hover 提亮
+
+> **踩坑记录**：`PostCard` 的 `.cover-category` 原本自带 `background`/`color`，
+> 与全局 `.category-badge` 冲突。由于 **scoped 选择器带 `data-v` 属性、优先级高于全局类**，
+> 本地样式会盖掉全局渐变。处理方式：`.cover-category` 只保留定位职责，视觉交给全局类。
 
 ---
 
@@ -755,12 +768,12 @@ sequenceDiagram
 | F1 | 零测试 | `package.json` 无测试依赖 | 重构无安全网（P1-11） |
 | F2 | 手写 DTO 类型，无强制同步 | `types/index.ts` | 已因 `totalCount` 出过缺陷（P1-12） |
 | F3 | `ApiError.code` 未被任何调用方使用 | `http.ts:4-12` | 401/403/4090 无法差异化处理（P0-1/P1-2） |
-| F4 | loading/error 分支在各视图重复 | 13 个视图 | 维护成本（P1-10） |
-| F5 | 无 404 页，通配路由静默重定向 | `router/index.ts:36` | 体验与 SEO（P1-6） |
+| F4 | ~~loading/error 分支在各视图重复~~ **部分已修**：骨架屏已组件化、shimmer 已全局化；error 分支仍各写 | 13 个视图 | 剩余为 error 提示的统一（P1-10） |
+| F5 | ~~无 404 页~~ **已修**：新增 `NotFoundView` + `name: 'not-found'` 通配路由 | — | 生产还需让服务器返回真实 404 状态码 |
 | F6 | 详情页 title 中站点名硬编码 | `PostDetailView.vue:36` | 改站名不生效（P1-7） |
 | F7 | 首屏主题闪烁 | `index.html` 无内联主题脚本 | 亮色系统下闪白（P1-8） |
 | F8 | `@types/dompurify` 放在 `dependencies` | `package.json:12` | dompurify v3 已自带类型，该包可能无用 |
 | F9 | Google Fonts 外部依赖无本地兜底 | `index.html:7-12` | 网络受限时字体降级与阻塞 |
 | F10 | 代理目标硬编码 | `vite.config.ts:18` | 无法按环境切换（P1-1） |
-| F11 | 分类样式缺失 | `styles/global.css` | 分类与标签无视觉区分（P1-5） |
+| F11 | ~~分类样式缺失~~ **已修**：新增全局 `.category-badge`，与 `.tag-badge` 视觉可区分 | — | — |
 | F12 | 早期规划组件未创建且文档未更新 | `docs/`（已清理） | 已通过本轮文档重写消除 |
