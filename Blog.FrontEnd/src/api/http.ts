@@ -16,10 +16,12 @@ const BASE = import.meta.env.VITE_API_BASE ?? ''
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
-      ...init,
-    })
+    // multipart 上传必须让浏览器自行生成 boundary，因此不能预设 Content-Type
+    const headers = init?.body instanceof FormData
+      ? { ...init?.headers }
+      : { 'Content-Type': 'application/json', ...init?.headers }
+
+    res = await fetch(`${BASE}${path}`, { ...init, headers })
   } catch {
     throw new ApiError(-1, '网络异常，请检查后端服务是否启动')
   }
@@ -56,4 +58,14 @@ export function put<T>(path: string, body?: unknown): Promise<T> {
 
 export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
+}
+
+/**
+ * 上传文件（multipart/form-data）。
+ * 注意：不能带 Content-Type: application/json，浏览器需自行生成 multipart boundary。
+ */
+export function upload<T = { url: string }>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  return request<T>(path, { method: 'POST', body: form })
 }

@@ -72,11 +72,23 @@ export interface ArchiveGroupDto {
   items: ArchiveItemDto[]
 }
 
+/** 站点配置的 Key 常量，与后端 SiteConfigKeys 对齐 */
+export const SiteConfigKey = {
+  SiteName: 'SiteName',
+  HeroSubtitles: 'HeroSubtitles',
+  FoundingDate: 'FoundingDate',
+  HeroBackground: 'HeroBackground',
+} as const
+
+export type SiteConfigKeyValue = (typeof SiteConfigKey)[keyof typeof SiteConfigKey]
+
 export interface SiteConfigDto {
   siteName: string
   heroSubtitles: string[]
   heroBackground: string | null
   foundingDate: string | null
+  /** 各配置项当前的乐观锁版本号（Key -> Version）；缺失的 Key 表示尚未创建，保存时版本号传 0 */
+  versions: Record<string, number>
 }
 
 export interface SocialLinkDto {
@@ -87,6 +99,17 @@ export interface SocialLinkDto {
   sortOrder: number
   isVisible: boolean
   version: number
+}
+
+/** 社交链接批量保存请求体（Id/Version 为空表示新增） */
+export interface UpsertSocialLinkPayload {
+  id?: string | null
+  name: string
+  icon: string
+  url: string
+  sortOrder: number
+  isVisible: boolean
+  version?: number | null
 }
 
 export interface SiteStatsDto {
@@ -105,6 +128,16 @@ export interface AuthorDto {
   avatar: string
   bio: string
   createdAt: string
+  version: number
+}
+
+/** 更新博主资料请求体 */
+export interface UpdateAuthorPayload {
+  name: string
+  email: string
+  bio: string
+  avatar: string
+  version: number
 }
 
 export interface PostQuery {

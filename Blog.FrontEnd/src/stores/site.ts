@@ -27,5 +27,10 @@ export const useSiteStore = defineStore('site', {
     async refreshStats() {
       this.stats = await getSiteStats().catch(() => this.stats)
     },
+    /** 管理端改完站点配置 / 社交链接后强制重新拉取，避免全站沿用旧配置 */
+    async refreshAll() {
+      this.loaded = false
+      await this.ensureLoaded()
+    },
   },
 })
