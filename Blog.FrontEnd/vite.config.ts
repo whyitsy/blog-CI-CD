@@ -15,7 +15,7 @@ export default defineConfig({
     proxy: {
       // 后端接口与媒体文件统一走代理，避免跨域；coverImage 等相对路径可直接使用
       '/api': {
-        target: 'http://localhost:5080',
+        target: 'http://localhost:5131',
         changeOrigin: true,
       },
     },
