@@ -1,10 +1,13 @@
 # 技术决策与知识点记录（tech.md）
 
-> 版本：v1.0 ｜ 日期：2026-09-10
+> 版本：v1.1 ｜ 日期：2026-09-10
 > 本文记录**已拍板的技术决策**及其依据，并解释开发中需要用到的知识点。
 > 配套文档：[business.md](./business.md) ｜ [backend.md](./backend.md) ｜ [frontend.md](./frontend.md) ｜ [suggestion.md](./suggestion.md)
 >
 > **状态标记**：`[已决定]` 已拍板待实施 ｜ `[已实现]` 代码已落地 ｜ `[待确认]` 仍需决策
+>
+> **v1.1 变更**：T1–T10 全部确认（见 §十决议记录）；搜索改为真 FTS（`zhparser` 已编译验证）；
+> SEO 明确不做；密码定为 PBKDF2；Token 只做 Access Token。
 
 ---
 
@@ -121,8 +124,12 @@ volumes:
 | 项 | 决定 |
 |---|---|
 | 认证方案 | `[已决定]` **JWT**，先行实现；第三方 OAuth 后期再考虑 |
+| Token 形态 | `[已决定]` **只用 Access Token，不做 Refresh Token**（T7） |
+| Token 有效期 | `[已决定]` 30 分钟（`Jwt:AccessTokenMinutes`） |
+| 密码哈希 | `[已决定]` **PBKDF2（框架内置 `Rfc2898DeriveBytes`）**，不引入三方包（T3） |
 | 账号模型 | `[已决定]` **`User` 与 `Author` 分离** |
 | 项目定位 | `[已决定]` **多作者博客**（不再是单作者） |
+| 作者账号来源 | `[已决定]` **不开放自助注册**，由管理员在后台创建（T1） |
 | 草稿保护 | `[已决定]` 草稿需权限保护（仅作者本人与管理员可见） |
 
 ### 2.2 核心模型澄清：Author 是「内容」不是「账号」
@@ -149,27 +156,25 @@ volumes:
 flowchart TB
   subgraph FE["前台 / Front（面向作者）"]
     FL["/login<br/>作者登录"]
-    FR["/register<br/>作者注册"]
     FC["/me<br/>我的文章 / 草稿箱"]
   end
   subgraph BE["后台 / Admin（面向站点管理者）"]
     AL["/admin/login<br/>管理员登录"]
-    AU["/admin/users<br/>账号管理"]
+    AU["/admin/users<br/>账号管理<br/>（含创建作者账号）"]
     AA["/admin/authors<br/>作者管理（内容）"]
     AS["/admin/site<br/>站点配置"]
     AP["/admin/posts<br/>全部文章"]
   end
-  U1["Author 账号<br/>（作者本人）"] --> FL
+  U1["Author 账号<br/>（由管理员创建）"] --> FL
   U2["User 账号<br/>（管理员）"] --> AL
-  FL --> API["POST /api/auth/author/login"]
-  FR --> API2["POST /api/auth/author/register"]
+  FL --> API["POST /api/auth/login"]
   AL --> API3["POST /api/auth/admin/login"]
   API --> T["JWT"]
-  API2 --> T
   API3 --> T
   T --> P{"JWT 中的 role claim"}
   P -->|"Author"| S1["仅能操作自己的文章<br/>可读写自己的草稿"]
   P -->|"Admin"| S2["管理全部内容<br/>+ 账号 / 作者 / 站点配置"]
+  AU -.->|"创建账号"| U1
 ```
 
 #### 前台登录（Author）
@@ -179,20 +184,28 @@ flowchart TB
   - 撰写、编辑、发布/下架**自己的**文章（含草稿）
   - 维护自己的 `Author` 资料（姓名/头像/简介）
   - **不能**管理其他作者的文章、不能改站点配置、不能管理账号
-- **注册**：默认开放注册（`[待确认]` 是否需要管理员审批，见 suggestion.md）
+- **账号来源**：`[已决定]` **不开放自助注册**（T1）。
+  由管理员在 `/admin/users` 创建账号，并设置其关联的 `Author`、初始密码与角色。
+  理由：博客作者是稀缺角色，开放注册会立即带来垃圾内容与审核负担；
+  作者本人也无法自行选择「我是谁」（`Author` 归属必须由管理员指定，否则可冒名发文）。
+
+> **因此不存在 `/register` 页面与 `POST /api/auth/author/register` 端点。**
+> 若将来确有外部作者投稿需求，再评估邀请码 / 邮箱验证等受控注册方式。
 
 #### 后台登录（User）
 
 - **谁用**：站点管理员
 - **能做什么**：
-  - 管理账号（创建/禁用/改角色）
+  - 管理账号（创建/禁用/改角色，**包括创建作者账号**）
   - 管理作者（`Author` 是内容，可增删改）
   - 管理**全部**文章（含他人的草稿）
   - 站点配置、社交链接、分类、标签
 
 > **为什么需要两套入口**：两者的**权限模型与生命周期完全不同**。
-> 作者可以自助注册、数量会增长；管理员是站点的运维者，数量固定且不该对外注册。
+> 作者账号由管理员发放、数量可控；管理员是站点的运维者，数量固定且**绝不对外开放创建**。
 > 混在一个登录页会导致「注册即成为管理员」这类严重越权。
+> 即便作者注册不开放，两个入口仍需分开：它们的**登录后落地页与错误提示**都不同
+> （作者进 `/me`，管理员进 `/admin`），且未来若开放受控注册，也只会开放作者那一个入口。
 
 #### `[待确认]` 单应用还是双应用
 
@@ -245,11 +258,23 @@ flowchart TB
 因为服务端不存状态，**签发出去的 token 在过期前一直有效**。
 「退出登录」只是前端删掉本地 token，服务端并不知道；token 若被窃取，到期前照样能用。
 
-**应对**：
+**应对**（`[已决定]` T7）：
 
-- Access Token **短有效期**（建议 15–30 分钟）
-- 需要「立即踢下线」时，引入**短期黑名单**（存 Redis，key = token 的 `jti`，TTL = 剩余有效期）
-- 本项目有 Redis 可用，且 Redis 不可用时降级为 Memory（见 §4），黑名单同样适用该降级策略
+- Access Token **有效期 30 分钟**（`Jwt:AccessTokenMinutes`）
+- **不做 Refresh Token**。理由：管理后台是低频操作，30 分钟足够完成一次编辑；
+  引入双 token 会显著增加前后端复杂度与安全面（多一个长期凭证要保护、要轮换、要防重放）
+- 需要「立即踢下线」时，用 **`User.TokenVersion`** 方案（推荐，见下），比黑名单更简单
+
+**两种「主动失效」手段对比**：
+
+| 方案 | 做法 | 代价 | 推荐 |
+|---|---|---|---|
+| Redis 黑名单 | 存 `blog:auth:blacklist:v1:{jti}`，TTL = 剩余有效期 | 每次请求多一次 Redis 查询；Redis 故障时降级 Memory（单实例 OK，多实例失效） | 备选 |
+| **`User.TokenVersion`** | User 上存一个整数；签发时写入 claim，校验时与库中比对。改密码/踢下线只需 `INCR` | 每次请求需读 User（可缓存）；**不依赖 Redis** | ✅ **推荐** |
+
+> **为什么推荐 `TokenVersion`**：它只需要数据库（已有），不引入新的运行时依赖，
+> 也不会因为 Redis 降级而在多实例下失效。代价是「每次请求要能拿到当前 TokenVersion」——
+> 用缓存 + 写时失效即可（与现有缓存策略一致）。
 
 #### 坑 2：存哪里
 
@@ -277,17 +302,36 @@ flowchart TB
 
 | 算法 | 说明 | .NET 支持 |
 |---|---|---|
-| **BCrypt** | 老牌，广泛使用 | 需 NuGet `BCrypt.Net-Next` |
-| **Argon2id** | 2015 年密码哈希竞赛冠军，**当前推荐** | 需 NuGet（如 `Konscious.Security.Cryptography.Argon2`） |
-| **PBKDF2** | NIST 认可，.NET **内置** | `Rfc2898DeriveBytes`（`Microsoft.AspNetCore.Identity` 也用） |
+| **PBKDF2** | NIST 认可，.NET **内置** | `Rfc2898DeriveBytes` ✅ **本项目采纳**（T3） |
+| Argon2id | 2015 年密码哈希竞赛冠军，抗 GPU 更强 | 需三方 NuGet |
+| BCrypt | 老牌，广泛使用 | 需三方 NuGet |
 
-`[待确认]` 具体选型。建议 **Argon2id**；若想减少依赖则用 **PBKDF2**（内置于框架，无需三方包）。
+`[已决定]` **采用 PBKDF2**（T3）。理由：**框架内置，零新依赖**，无需引入并审计三方包；
+安全强度对本站威胁模型足够。Argon2id 更强，但收益不足以抵消新增依赖的成本。
 
-**无论选哪个，都必须**：
+**推荐参数**：
 
-- 每个用户独立随机盐（算法库通常内建）
-- 工作因子可调（随硬件升级提高）
-- 校验用**恒定时间比较**，防时序攻击（算法库通常内建）
+| 参数 | 建议值 | 说明 |
+|---|---|---|
+| 迭代次数 | `210_000`（OWASP 2023 对 PBKDF2-HMAC-SHA512 的建议下限量级） | 需按部署机器实测调整，目标单次校验 ≈ 50–100ms |
+| 哈希算法 | `HashAlgorithmName.SHA512` | 优于 SHA256 |
+| 盐长度 | 16 字节（`RandomNumberGenerator`） | 每用户独立随机 |
+| 输出长度 | 32 字节 | |
+
+**存储格式**：把算法、迭代次数、盐、哈希**一起存进单个字符串**，便于将来提升迭代次数时
+仍能校验旧密码（用旧参数校验，登录成功后用新参数重新哈希）：
+
+```
+pbkdf2-sha512$210000$<base64-salt>$<base64-hash>
+```
+
+**必须做到**：
+
+- 每个用户独立随机盐（不要全局固定盐）
+- 迭代次数可随硬件升级提高，且**旧哈希仍可校验**
+- 校验用**恒定时间比较**（`CryptographicOperations.FixedTimeEquals`），防时序攻击
+- **绝不能用 MD5/SHA1/SHA256 直接哈希**（设计目标是快，GPU 每秒可算数十亿次）
+- 登录失败统一提示「邮箱或密码错误」，不区分「用户不存在」与「密码错误」，防账号枚举
 
 ---
 
@@ -335,15 +379,21 @@ flowchart TB
 2. 作者填了 → 使用作者的值，且 Update 时不得重算
 ```
 
-实现方式二选一（`[待确认]`）：
+实现方式：`[已决定]` **由应用层判断，不新增字段**（T4）。
 
-| 方案 | 做法 | 评价 |
+| 方案 | 做法 | 决议 |
 |---|---|---|
-| **由应用层判断** | `PostService` 判断 `request.Summary` 是否为空，为空才调 `RefreshDerivedFields()` | 简单，但规则散在服务层 |
-| **由实体自持** | `Post` 增加 `IsSummaryAuto` 布尔列；`Update(title, content, summary, ...)` 内判断 | **推荐**：规则内聚在领域层，符合现有「实体含领域行为」的风格 |
+| **由应用层判断** | `PostService` 判断 `request.Summary` 是否为空，为空才调 `RefreshDerivedFields()` | ✅ **采纳** |
+| 由实体自持 | `Post` 增加 `IsSummaryAuto` 布尔列；`Update(...)` 内判断 | ❌ 否决（增加列与迁移成本，且判定依据其实只有「请求有没有传」这一个事实） |
 
-> 同时把 `Summary` 长度上限从 `MaxLength(120)` 与实际截取长度（当前硬编码 50，`Post.cs:8`）对齐，
-> 避免「存储能放 120 字但只截 50 字」的困惑。
+**落地要点**：
+
+1. `Post.Update(...)` 当前签名不含 `summary`（`Post.cs:45-53`），**需扩展签名**接收 `summary`
+2. 判定规则唯一且明确：**`request.Summary` 为空/空白 → 自动截取；非空 → 用传入值**
+3. 应用层需在「创建」与「更新」两条路径上都应用同一规则，避免只改一处
+4. 前端 `PostEditor` 的摘要输入框需**真正提交该字段**（当前 `api/posts.ts:40-47` 不提交，属既有缺陷 R9）
+5. 同时把 `Summary` 的 `MaxLength(120)` 与实际截取长度（当前硬编码 50，`Post.cs:8`）对齐，
+   避免「存储能放 120 字但只截 50 字」的困惑
 
 ### 3.5 `/media` 废弃与云存储扩展（Q4 / Q9）
 
@@ -592,47 +642,154 @@ p.Title.ToLower().Contains(kw) || p.Content.ToLower().Contains(kw) || ...
    source = source.OrderByDescending(p => EF.Functions.TrigramsSimilarity(p.Title, kw));
    ```
 
-> **权衡说明**：`pg_trgm` 解决的是「模糊/子串匹配走索引」，
-> 它**不是**真正的语义分词检索（无法处理同义词、词干还原）。
-> 但对个人博客的内容规模与检索诉求，**这是投入产出比最高的方案**。
+> **权衡说明（曾被考虑但未采纳）**：`pg_trgm` 也能解决「模糊匹配走索引」，
+> 且环境自带、无需编译。但它**不是真正的分词检索**（无法处理同义词、词干还原、词序变化）。
+> 你已明确选择**真 FTS**，因此本项目按 §5.3 实施，`pg_trgm` 不再作为主方案。
 
-> **`Content` 列要不要建 trgm 索引？** 不建议。
-> 正文通常很长，trigram 索引会**显著膨胀**（索引可能比正文还大）。
-> 建议只索引 `Title` + `Summary`，正文用 `ILIKE` 但不建索引（或仅在数据量小的时候接受全表扫描）。
-> `[待确认]` 若必须搜正文，考虑第二阶段的 FTS。
+### 5.3 `[已决定]` 真 FTS：`zhparser` + `tsvector` + GIN（T9）
 
-#### 阶段二（未来，数据量或需求到达时）：真 FTS
+**决定**：支持中文全文检索，建 `tsvector` 列 + GIN 索引，安装 `zhparser` 作为中文分词器。
 
-需要安装中文分词扩展（`zhparser` 或 `pg_jieba`），二者都**不在你当前镜像中**，需要：
+**这是一次**性**实施（不再分两阶段）**，因为分词器已装好（见下）。
 
-- 自行编译安装（`zhparser` 基于 SCWS 分词库）
-- 或换用带这些扩展的镜像（如 `pgroonga` 官方镜像、或自行构建 Dockerfile）
-- 或在应用层做分词（如接入 `jieba` 的 .NET 移植），把分词结果写入 `tsvector` 列
+#### 5.3.1 环境前置：`zhparser` 已编译安装（`[已实现]`）
 
-然后：
+`zhparser` **不在官方 PostgreSQL 镜像中**，必须自行编译。我已在本机 `pgsql` 容器内完成：
+
+| 步骤 | 说明 |
+|---|---|
+| 1 | 安装构建依赖：`build-essential postgresql-server-dev-18 autoconf automake libtool pkg-config git` |
+| 2 | 编译安装 **SCWS**（zhparser 依赖的中文分词库）到 `/usr/local` |
+| 3 | 编译安装 **zhparser** 到 PG 的 `pkglibdir` / `sharedir` |
+| 4 | `CREATE EXTENSION zhparser` |
+| 5 | 创建中文检索配置 `chinese` 并配置 token 类型映射 |
+
+**踩到的坑（供复现参考）**：
+
+| 问题 | 解决 |
+|---|---|
+| `libscws-dev` 不在 Debian 13 源里 | 改为从源码编译 SCWS |
+| SCWS 仓库没有 `autogen.sh`，实际脚本是 `acprep` | 用 `./acprep` |
+| `acprep` 失败：`Makefile.am: '#' comment at start of rule is unportable`（`sync-web` 规则内有一行 **Tab 缩进的 `#` 注释**） | 删除该行后再 `acprep` |
+| `automake --warnings=no-portability` 未能抑制该错误 | 只能改源码 |
+| GitHub clone 偶发 TLS 中断 | clone 加重试循环 |
+
+**实测分词效果**：
 
 ```sql
+SELECT to_tsvector('chinese', '使用 EF Core 做数据库优化与全文检索');
+-- 'core':3 'ef':2 '优化':6 '使用':1 '做':4 '全文检索':7 '数据库':5
+```
+
+词级切分正确（不是逐字），且**中英混合正常**：
+
+```sql
+SELECT to_tsvector('chinese','数据库优化实践') @@ to_tsquery('chinese','数据库');  -- t
+SELECT to_tsvector('chinese','使用 EF Core 做 ORM') @@ to_tsquery('chinese','core'); -- t
+```
+
+> **⚠️ 部署风险（必须处理）**：以上改动只存在于**当前运行的容器**里。
+> 容器一旦重建（`docker rm` / 换机器 / 清理），`zhparser` 会**全部丢失**，全文检索立刻失效。
+> **因此必须补一个自定义 PostgreSQL 镜像（Dockerfile）**，把 SCWS + zhparser 的编译固化下来。
+> 详见 [suggestion.md](./suggestion.md) —— 这是当前唯一的阻塞性未决项。
+
+#### 5.3.2 检索配置
+
+```sql
+CREATE EXTENSION IF NOT EXISTS zhparser;
+
 CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
-ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l WITH simple;
+-- n名词 v动词 a形容词 i成语 e叹词 l习用语 j简称 q量词
+ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l,j,q WITH simple;
+```
+
+> **为什么用 `simple` 字典**：`simple` 只做小写归一化，不做词干还原与停用词过滤。
+> 中文不需要词干还原；且用 `simple` 能让中英混合文本里的英文单词原样保留（`EF`、`Core` 都能命中）。
+
+#### 5.3.3 `tsvector` 列与索引
+
+**方案选择**：用**生成列（generated column）**而非触发器。
+
+```sql
+ALTER TABLE "Posts" ADD COLUMN "SearchVector" tsvector
+  GENERATED ALWAYS AS (
+      setweight(to_tsvector('chinese', coalesce("Title", '')),   'A') ||
+      setweight(to_tsvector('chinese', coalesce("Summary", '')), 'B') ||
+      setweight(to_tsvector('chinese', coalesce("Content", '')), 'C')
+  ) STORED;
+
 CREATE INDEX ix_posts_search ON "Posts" USING gin ("SearchVector");
 ```
 
-> **建议**：阶段一先落地 `pg_trgm`，并把**查询入口收敛到一个方法**（如 `IPostSearchService`），
-> 这样阶段二替换实现时，**上层无需改动**。
+| 设计点 | 说明 |
+|---|---|
+| **生成列而非触发器** | 数据库自动维护，应用层无需关心；不存在「忘了更新索引列」的可能 |
+| **`setweight` 权重** | 标题 `A` > 摘要 `B` > 正文 `C`，让标题命中排在前面（解决「无相关度排序」） |
+| **`STORED`** | PostgreSQL 生成列只支持 `STORED`，会占用额外磁盘但可被索引 |
+| **GIN 索引** | 倒排索引，`tsvector` 的标准索引类型 |
+
+> **代价**：生成列会在每次写入时重算 `tsvector`，且 `Content` 很长时写入开销与存储都会增加。
+> 这是「检索能力」与「写入成本」的取舍，由 T9 决策明确选择了检索能力。
+
+#### 5.3.4 查询改写
+
+```csharp
+// 用 plainto_tsquery 而非 to_tsquery：自动处理用户输入的与/或/特殊字符，无需转义
+var q = EF.Functions.PlainToTsQuery("chinese", kw);
+source = source.Where(p => p.SearchVector.Matches(q));
+source = source.OrderByDescending(p => p.SearchVector.Rank(q))   // 相关度排序（权重生效）
+                 .ThenByDescending(p => p.PublishedAt);
+```
+
+| 函数 | 用途 |
+|---|---|
+| `plainto_tsquery` | 把自然语言输入转成 `tsquery`（多词默认 AND），**用户输入无需转义** |
+| `ts_rank` | 相关度打分，配合 `setweight` 让标题命中优先 |
+
+> **必须收敛查询入口**：把检索封装到 `IPostSearchService`，
+> 这样将来若要调整权重、换分词器或加同义词词典，**上层（Controller/前端）无需改动**。
+
+#### 5.3.5 EF Core 落地要点
+
+生成列 EF Core 不原生支持，需要在迁移里手写 SQL，并在实体上标记影子属性避免 EF 试图写入：
+
+```csharp
+// 实体：只读影子属性
+entity.Property<object>("SearchVector").HasColumnName("SearchVector")
+      .HasComputedColumnSql(null, stored: true);   // 用迁移手写真实表达式
+```
+
+**实践建议**：迁移中用 `migrationBuilder.Sql(...)` 直接建生成列与 GIN 索引，
+比试图让 EF 生成更可控、更易读。
 
 ### 5.4 中文全文检索的额外注意点
 
 | 注意点 | 说明 |
 |---|---|
-| 中文无空格分隔 | 这是所有中文检索方案要解决的根本问题（trigram 是绕过，分词是正面解决） |
-| 停用词 | 英文 `the/a` 等无意义词应过滤；中文扩展需配置停用词表 |
-| 同义词 | 「数据库」≈「DB」，FTS 词典可配同义词；trigram 做不到 |
-| 词干还原 | 英文 `running` → `run`；中文不适用 |
-| 混合语言 | 博客常中英混杂（如「使用 EF Core 做 ORM」），需确保分词对英文也正常 |
+| 中文无空格分隔 | `zhparser` 已正面解决（词级切分） |
+| 停用词 | 用 `simple` 不过滤停用词；若需过滤可换 `english` 字典或自建 |
+| 同义词 | 可通过 `ALTER TEXT SEARCH CONFIGURATION ... ADD MAPPING` 或自定义同义词词典扩展（`[计划中]`） |
+| 词干还原 | 中文不需要；英文用 `simple` 不做还原（`running` 不会命中 `run`，如需可换 `english` 字典） |
+| 混合语言 | 已实测正常（`EF Core` 可被 `core` 命中） |
+| 检索配置名 | `chinese` 是**数据库级对象**，EF 迁移需保证先创建（见 §5.3.2） |
+| 与 `LIKE` 的关系 | 短词/子串场景（如搜 `EF` 命中 `EFCore`）FTS 可能不如 `LIKE`；**如需两者兼顾，可同时保留 trgm 索引做兜底**（`[计划中]`） |
 
 ---
 
 ## 六、SEO：当前技术问题与实现路径（Q11）
+
+> **`[已决定]` 结论：本项目不做 SEO，本节仅为技术资料留存。**
+> 你的原话是「因为前端是纯 Vue 3 SPA，不需要考虑 SEO 和搜索，不考虑这个问题」（T10）。
+> 因此 **预渲染 / SSR / sitemap / OG / 结构化数据全部不做**，本节内容**不需要执行**。
+>
+> 保留本节的原因：它记录了 CSR 架构下的具体技术债与将来的改造路径，
+> 若某天需要做 SEO，可直接照此实施，无需重新调研。
+>
+> **注意区分两件事**：
+> - **SEO（搜索结果优化）** —— `[已决定]` **不做**（本节）
+> - **站内搜索（用户找文章）** —— `[已决定]` **要做**，用 zhparser 全文检索（见 §5）
+>
+> 两者名字相近但完全无关：前者是给搜索引擎爬虫看的，后者是给自己的用户用的。
 
 ### 6.1 当前的技术问题是什么
 
@@ -744,11 +901,11 @@ useSeo({
 | `GiscusComments.vue` | 动态注入第三方 `<script>` |
 | `AdminPostListView.vue` 等 | 使用 `window.confirm` |
 
-### 6.4 优先级建议
+### 6.4 优先级建议（`[已废弃]` —— 不予执行）
 
-`[已决定]` SEO **本期不做**。待将来启动时，按此顺序：
+`[已决定]` 按 T10，SEO **不做**。以下清单**仅作将来启动时的参考**，现在不排期：
 
-| 优先级 | 项 | 理由 |
+| 优先级（若启动） | 项 | 理由 |
 |---|---|---|
 | P0 | 修软 404 + 统一 meta 能力 | 是其余一切的基础，且成本低 |
 | P1 | `robots.txt` + `sitemap.xml` + OG 标签 | 成本极低、收益直接 |
@@ -756,8 +913,12 @@ useSeo({
 | P2 | JSON-LD 结构化数据 | 富媒体展现，收益取决于内容质量 |
 | P2 | SSR 评估 | 仅在前述手段不足时 |
 
-> **注意**：`/admin/**` 与 `/me/**` 页面必须**排除**在预渲染与 sitemap 之外，
+> 若将来启动 SEO，`/admin/**` 与 `/me/**` 必须**排除**在预渲染与 sitemap 之外，
 > 并加 `<meta name="robots" content="noindex">`，避免后台被搜索引擎收录。
+>
+> **与 SEO 无关、但仍需单独修的一项**：「未知路径重定向首页」产生软 404，
+> 这既是 SEO 问题也是体验问题。它**不因 T10 而取消** ——
+> 需新增 `NotFoundView` 让用户知道页面不存在（见 [frontend.md](./frontend.md) F5 / P1-6）。
 
 ---
 
@@ -872,12 +1033,22 @@ SiteService.UpdateConfigAsync 此前对已存在的 Key 直接调用 ApplyOptimi
 
 | 编号 | 决策 | 状态 |
 |---|---|---|
+| **T1** | **作者账号不开放自助注册**，由管理员在后台创建 | `[已决定]` §2.3 |
+| **T2** | **一篇文章可属于多个专栏**（多对多） | `[已决定]` §3.1 |
+| **T3** | **密码哈希用框架内置 PBKDF2**（`Rfc2898DeriveBytes`），不引入三方包 | `[已决定]` §2.6 |
+| **T4** | **`Summary` 覆盖逻辑放应用层**，**不新增 `IsSummaryAuto` 字段** | `[已决定]` §3.4 |
+| **T5** | 多实例检测用**启动期显式配置校验** | `[已决定]` §4.3 |
+| **T6** | **Author 不能创建分类/标签**（仅 Admin） | `[已决定]` §2.4 |
+| **T7** | **只用 Access Token，不做 Refresh Token**，有效期 30 分钟 | `[已决定]` §2.1 |
+| **T8** | 缓存失效**暂维持 `SCAN` 前缀删除**，但先落地 `v{版本}` | `[已决定]` §4.6 |
+| **T9** | **做真 FTS**：`tsvector` 列 + GIN 索引 + 装 `zhparser` 支持中文 | `[已决定]` §5.3 |
+| **T10** | **不做 SEO**（纯 SPA）。站内搜索**要做**，与 SEO 无关 | `[已决定]` §6 |
 | Q4 | `/media` 废弃，统一 `/api/files/**`；数据库只存 storage key，不存完整 URL | `[已决定]` |
-| Q5 | 摘要自动截取为默认，允许作者覆盖（需修 `RefreshDerivedFields` 的无条件重算） | `[已决定]` |
+| Q5 | 摘要自动截取为默认，允许作者覆盖 | `[已决定]` |
 | Q6 | 不做审核流；多作者引入时再评估 | `[已决定]` |
 | Q9 | 未来迁 OSS/CDN，本期不实现，只保留扩展点 | `[已决定]` |
 | Q10 | 不做国际化 | `[已决定]` |
-| Q11 | SEO 本期不做；路径与重构清单见 §6 | `[已决定]` |
+| Q11 | SEO 不做；路径与重构清单留档于 §6 | `[已决定]` |
 | Q12 | 修复后台污染浏览量：新增不计数参数的只读详情端点 | `[已决定]` |
 | Q13 | 维持自研 CSS 组件体系，允许按需引入单点组件 | `[已决定]` |
 | E1 | 不使用 Naive UI | `[已决定]` |
@@ -890,17 +1061,75 @@ SiteService.UpdateConfigAsync 此前对已存在的 Key 直接调用 ApplyOptimi
 
 ---
 
-## 九、本次迭代新增的待确认项
+## 九、待确认项
 
-| # | 问题 | 影响 |
+`[已决定]` **T1–T10 已全部确认，见 §八速查表。** 当前仅剩一项基础设施未决：
+
+| # | 问题 | 为何阻塞 | 影响 | 建议默认 |
+|---|---|---|---|---|
+| **T11** | **`zhparser` 如何固化到部署环境？** | 我在本机 `pgsql` 容器内手工编译安装了 SCWS + zhparser（§5.3.1），但**容器重建即全部丢失**，届时中文全文检索会直接失效（`to_tsvector('chinese', ...)` 报 `text search configuration "chinese" does not exist`） | 决定部署是否可复现；不解决则**生产上搜索功能是定时炸弹** | **编写自定义 `Dockerfile`**：基于 `postgres:18` 编译安装 SCWS + zhparser，并把 `CREATE EXTENSION` / `CREATE TEXT SEARCH CONFIGURATION` 纳入 EF 迁移。理由：这是唯一可复现、可交接的做法；用「文档写手工步骤」在换人/换机时必然出错 |
+
+> 若你希望我直接动手，我可以写出该 Dockerfile 并实测构建一个带 zhparser 的镜像，
+> 再用它替换当前容器验证迁移能正常执行。**请确认是否现在做，还是先推进功能实现、把镜像放到部署阶段处理。**
+
+### 9.1 编译 zhparser 的完整步骤（留档，供写 Dockerfile 用）
+
+```dockerfile
+# 示意：基于官方 postgres 镜像追加 zhparser
+FROM postgres:18
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential postgresql-server-dev-18 \
+      autoconf automake libtool pkg-config git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# 1) SCWS（zhparser 依赖的中文分词库）
+RUN git clone --depth 1 https://github.com/hightman/scws.git /tmp/scws \
+ && cd /tmp/scws \
+ && sed -i "/^[[:space:]]*#unison/d" Makefile.am \
+ && ln -sf README.md README \
+ && ./acprep \
+ && ./configure --prefix=/usr/local \
+ && make -j"$(nproc)" && make install \
+ && ldconfig
+
+# 2) zhparser
+RUN git clone --depth 1 https://github.com/amutu/zhparser.git /tmp/zhparser \
+ && cd /tmp/zhparser \
+ && SCWS_HOME=/usr/local make && SCWS_HOME=/usr/local make install
+```
+
+**关键坑位（已在实测中踩到，写 Dockerfile 时必须保留）**：
+
+| # | 坑 | 处理 |
 |---|---|---|
-| T1 | 作者注册是否开放？还是管理员创建 Author 账号？ | 决定 `/register` 是否存在及防滥用策略 |
-| T2 | 一篇文章能否属于多个专栏？ | 决定 `PostCollection`（多对多）还是 `Post.CollectionId`（一对多） |
-| T3 | 密码哈希算法选 Argon2id 还是 PBKDF2？ | 依赖引入 vs 框架内置 |
-| T4 | `Summary` 的「作者覆盖」逻辑放应用层还是实体层？ | 代码组织风格 |
-| T5 | 多实例检测用「启动期显式配置」还是「运行期探测」？ | §4.3 |
-| T6 | Author 能否创建分类/标签？ | 权限矩阵细节 |
-| T7 | Access Token 有效期取值？是否需要 Refresh Token？ | 安全性与体验的权衡 |
-| T8 | 缓存失效改用「细粒度版本号」还是维持 `SCAN` 前缀删除？ | §4.5，数据量决定优先级 |
-| T9 | 正文（`Content`）是否需要可搜索？ | 决定是否建 trgm 索引或上真 FTS |
-| T10 | 预渲染的触发方式（CI 构建 / webhook / 定时）？ | §6.3 第 4 步 |
+| 1 | `libscws-dev` 不在 Debian 13 源 | 从源码编译 SCWS |
+| 2 | SCWS 无 `autogen.sh`，脚本名是 `acprep` | 用 `./acprep` |
+| 3 | `acprep` 因 `Makefile.am` 里 Tab 缩进的 `#` 注释报 unportable | `sed -i "/^[[:space:]]*#unison/d" Makefile.am` |
+| 4 | `acprep` 需要 `autoconf automake libtool pkg-config` | 必须装 |
+| 5 | `acprep` 会 `ln -sf README.md README`，但 clone 后可能已存在 | 无副作用，保留 |
+| 6 | GitHub clone 偶发 TLS 中断 | Dockerfile 中 `git clone` 加重试或换 `curl` 下载 tarball |
+
+---
+
+## 十、T1–T10 决议记录（已全部确认）
+
+保留此表作为决策追溯：记录当时的**候选选项**与**最终选择**，便于日后复盘「为什么这么定」。
+
+| # | 当时的问题 | 候选 | **最终决定** | 详见 |
+|---|---|---|---|---|
+| T1 | 作者注册是否开放？ | 开放自助注册 / 管理员创建 | **管理员在后台创建，不开放注册** | §2.3 |
+| T2 | 一篇文章能否属于多个专栏？ | 多对多 `PostCollection` / 一对多 `Post.CollectionId` | **多对多** | §3.1 |
+| T3 | 密码哈希算法？ | Argon2id（三方包）/ PBKDF2（框架内置） | **PBKDF2（框架内置）** | §2.6 |
+| T4 | `Summary` 覆盖逻辑放哪层？ | 实体层（加 `IsSummaryAuto`）/ 应用层 | **应用层，不新增字段** | §3.4 |
+| T5 | 多实例检测方式？ | 启动期显式配置 / 运行期探测 | **启动期显式校验** | §4.3 |
+| T6 | Author 能否创建分类/标签？ | 允许 / 仅 Admin | **仅 Admin** | §2.4 |
+| T7 | Token 形态与有效期？ | 仅 Access / Access+Refresh | **仅 Access Token，30 分钟** | §2.1 |
+| T8 | 缓存失效机制？ | 细粒度版本号 / 维持 `SCAN` | **暂维持 `SCAN`**，先落地 `v{版本}` | §4.6 |
+| T9 | 是否要做中文全文检索？ | 不做 / `pg_trgm` / 真 FTS + zhparser | **真 FTS：`tsvector` + GIN + `zhparser`** | §5.3 |
+| T10 | SEO 与预渲染？ | 做 / 不做 | **不做**（纯 SPA）。注：站内搜索另属 T9，要做 | §6 |
+
+> **注意 T4 的实现含义**：既然是「应用层覆盖、不新增字段」，那么
+> **判定「作者是否填了摘要」的唯一依据就是请求里的 `summary` 是否为空**。
+> 因此 `PostService` 必须先判断 `request.Summary`，为空时才调用实体的 `RefreshDerivedFields()`。
+> 这意味着 `Post.Update(...)` 的签名**需要扩展**以接收 `summary`（当前签名不含该参数，见 [backend.md](./backend.md) §9.2 第 10 项）。

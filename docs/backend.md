@@ -62,7 +62,7 @@
 | 用途 | 候选 | 说明 |
 |---|---|---|
 | JWT 签发与校验 | `Microsoft.AspNetCore.Authentication.JwtBearer` | 官方包 |
-| 密码慢哈希 | `Konscious.Security.Cryptography.Argon2` **或** 框架内置 `Rfc2898DeriveBytes`（PBKDF2） | 待 T3 确认 |
+| 密码慢哈希 | **框架内置 `Rfc2898DeriveBytes`（PBKDF2）** | T3 已定：零新依赖 |
 | JWT 黑名单（可选） | 复用现有 `StackExchange.Redis` | 无需新依赖 |
 
 ### 1.4 数据与中间件组件
@@ -71,7 +71,7 @@
 |---|---|---|---|
 | 关系数据库 | PostgreSQL 18.6 | `[已实现]` | `Infrastructure/DependencyInjection.cs:22` |
 | 缓存 | Redis / Memory / Null（三档可切换） | `[已实现]` | `Infrastructure/DependencyInjection.cs:41-55` |
-| **全文检索** | **`pg_trgm` + GIN**（阶段一）/ `zhparser`（阶段二） | `[已决定]` | [tech.md](./tech.md) §5 |
+| **全文检索** | **`zhparser` + `tsvector` 生成列 + GIN**（真 FTS） | `[已决定]` | [tech.md](./tech.md) §5.3 |
 | 消息队列 | 无 | `[计划中/暂不需要]` | 检索无 RabbitMQ/Kafka |
 | 对象存储 | 本地磁盘（**只是过渡**） | `[已实现]` | `Infrastructure/Files/LocalFileStorageService.cs:8-9` |
 | 任务调度 | 无 | `[计划中]` | 无 Hangfire/Quartz |
@@ -80,12 +80,13 @@
 | 链路追踪 | 无 | `[计划中]` | 无 traceId 透传 |
 
 > **PostgreSQL 扩展实测结果**（本机 PG 18.6）：
-> `pg_trgm 1.6` ✅ 可用 ｜ `btree_gin 1.3` ✅ ｜ `unaccent 1.1` ✅
-> `zhparser` ❌ 不可用 ｜ `pg_jieba` ❌ ｜ `pgroonga` ❌
+> 镜像自带：`pg_trgm 1.6` ✅ ｜ `btree_gin 1.3` ✅ ｜ `unaccent 1.1` ✅
+> 镜像**不带**：`zhparser` ❌ ｜ `pg_jieba` ❌ ｜ `pgroonga` ❌
 > `default_text_search_config = pg_catalog.english`
 >
-> **这个实测结果直接决定了搜索方案**：中文 FTS 所需的 `zhparser`/`pg_jieba` 不在镜像中，
-> 因此阶段一必须走 `pg_trgm`（详见 §5）。
+> **`zhparser` 已在本机容器内编译安装并验证可用**（含中文分词与中英混合），
+> 但**必须固化为自定义镜像**，否则容器重建即失效 —— 见 §5.5 与 [suggestion.md](./suggestion.md) T11。
+> 搜索方案因此按**真 FTS** 实施（§5）。
 
 ---
 
@@ -121,7 +122,7 @@ flowchart TB
     FS["LocalFileStorageService"]
     SEC["密码哈希 / JWT 实现"]
   end
-  DB[("PostgreSQL 18.6<br/>+ pg_trgm")]
+  DB[("PostgreSQL 18.6<br/>+ zhparser 中文分词")]
   RD[("Redis<br/>三档可切换")]
   DISK[("本地磁盘 media/yyyy/MM/")]
 
@@ -282,7 +283,7 @@ sequenceDiagram
 | `AuthorId` | `Guid` → **`Guid?`** | 与既有的 `SetNull` 删除行为对齐（当前语义矛盾，R10） |
 | `CreatedByUserId` | **新增** `Guid?` + FK → `Users` | 记录创建者，用于归属校验与审计 |
 | `IsSummaryAuto` | **新增** `bool` | 区分摘要是否自动生成（Q5 需要「非空则不再重算」） |
-| `SearchVector` | **新增** `tsvector`（阶段二用） | 真 FTS 预留；阶段一用 `pg_trgm` 不需要它 |
+| `SearchVector` | **新增** `tsvector` **生成列**（`STORED`） | 中文全文检索的核心（T9）；见 §5.4 |
 
 ### 3.3 公共列（`BaseEntity`）
 
@@ -331,15 +332,14 @@ PostgreSQL 部分索引语法，注意引号转义。
 
 | 索引 | 表 | 定义 | 理由 |
 |---|---|---|---|
-| `ix_posts_title_trgm` | Posts | `USING gin ("Title" gin_trgm_ops)` | 标题模糊检索走索引（§5） |
-| `ix_posts_summary_trgm` | Posts | `USING gin ("Summary" gin_trgm_ops)` | 摘要模糊检索走索引 |
+| `ix_posts_search` | Posts | `USING gin ("SearchVector")` | **中文全文检索**（真 FTS） |
 | `IX_Users_Email` | Users | 唯一+过滤 | 登录凭据唯一 |
 | `IX_Collections_Slug` | Collections | 唯一+过滤 | 专栏 URL 友好标识 |
 | `IX_Posts_CreatedByUserId` | Posts | `CreatedByUserId` | 按创建者过滤 |
-| `ix_posts_search`（阶段二） | Posts | `USING gin ("SearchVector")` | 真 FTS |
+| `ix_authors_name_trgm`（可选） | Authors | `USING gin ("Name" gin_trgm_ops)` | 作者名模糊匹配；**仅在需要时加** |
 
-> **`Content` 列是否建 trgm 索引**：**不建议**。正文长，trigram 索引会显著膨胀（索引可能大于数据）。
-> 只索引 `Title` + `Summary`；正文若必须搜，走阶段二 FTS。待 T9 确认。
+> **`SearchVector` 生成列与索引必须手写 SQL**：EF Core 不原生支持生成列表达式，
+> 迁移中用 `migrationBuilder.Sql(...)` 建列与 GIN 索引更可控（详见 §5.4）。
 
 ### 3.6 软删除与全局查询过滤器
 
@@ -370,7 +370,7 @@ PostgreSQL 部分索引语法，注意引号转义。
 | 迁移数量 | 1（`20260906040849_InitCreate`） |
 | 应用方式 | 启动时自动 `Database.Migrate()`（`Program.cs:74`） |
 | 生成命令 | `dotnet ef migrations add <Name>` |
-| 扩展启用 | `[已决定]` 需在迁移中 `CREATE EXTENSION IF NOT EXISTS pg_trgm`（PG 需超级用户或有权限角色） |
+| 扩展与检索配置 | `[已决定]` 迁移中需 `CREATE EXTENSION IF NOT EXISTS zhparser`、`CREATE TEXT SEARCH CONFIGURATION chinese` 及其 token 映射（PG 需超级用户或有权限角色） |
 | 回滚策略 | `[计划中]` 无自动化；建议每次迁移前备份 |
 | 生产变更流程 | `[已决定]` 建议改为**独立发布步骤**，不在应用启动时自动迁移 |
 
@@ -565,79 +565,146 @@ p.Title.ToLower().Contains(kw) || p.Content.ToLower().Contains(kw)
 | 无相关度排序 | 只能按 `PublishedAt` 倒序 |
 | 中文不分词 | 逐字子串匹配，词序不同即搜不到 |
 
-### 5.2 阶段一：`pg_trgm` + GIN（本次实施）
+### 5.2 方案选型对比（为什么最终选 zhparser）
 
-**为什么选它**：我实测了你的环境 —— `pg_trgm 1.6` **已可用**，
-而中文 FTS 所需的 `zhparser`/`pg_jieba` **不在镜像中**。
+| 方案 | 中文能力 | 相关度排序 | 词序容忍 | 环境成本 | 结论 |
+|---|---|---|---|---|---|
+| 现状 `ToLower().Contains()` | ❌ 逐字子串 | ❌ | ❌ | 无 | 全表扫描，必须换 |
+| `pg_trgm` + GIN | ⚠️ 按字符滑窗，能匹配但无词概念 | ⚠️ `similarity()` 粗糙 | ❌ | ✅ 镜像自带 | 备选（见 §5.3） |
+| **`zhparser` + `tsvector` + GIN** | ✅ **词级切分** | ✅ `ts_rank` + 权重 | ✅ | ⚠️ 需自行编译 | ✅ **采纳（T9）** |
 
-| 特性 | 说明 |
+**选择理由**：你要的是**真正的全文检索**，而不只是「让 `LIKE` 走索引」。
+`pg_trgm` 无法理解「数据库」是一个词，也无法处理词序变化（搜「优化数据库」匹配不到「数据库优化」）。
+`zhparser` 是正面解法。
+
+**代价**：需要自行编译 SCWS + zhparser 并固化镜像（§5.5），这是唯一的额外成本。
+
+### 5.3 备选保留：`pg_trgm`（作为兜底，非主方案）
+
+`pg_trgm` 仍在镜像中可用，**建议保留作为特定场景的补充**：
+
+| 场景 | 为什么 FTS 不够 |
 |---|---|
-| 中文支持 | ✅ 按字符滑窗切三元组，**不依赖词典** |
-| 索引 | ✅ `gin_trgm_ops` |
-| 匹配能力 | ✅ 模糊/子串/拼写容错，正是当前 `LIKE %x%` 想做的事但**走索引** |
-| 相关度 | ✅ `similarity()` 可排序 |
-| 安装 | ✅ 环境已有，`CREATE EXTENSION` 即可，无需编译 |
+| 极短词/前缀匹配（搜 `EF` 想命中 `EFCore`） | FTS 按词元匹配，`EF` 与 `EFCore` 是不同词元 |
+| 拼写容错 | FTS 不处理错别字；trigram 相似度可以 |
 
-**实施步骤**：
-
-1. 启用扩展（放在迁移中）：
-
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS pg_trgm;
-   ```
-
-2. 建 GIN 索引：
-
-   ```sql
-   CREATE INDEX ix_posts_title_trgm   ON "Posts" USING gin ("Title" gin_trgm_ops);
-   CREATE INDEX ix_posts_summary_trgm ON "Posts" USING gin ("Summary" gin_trgm_ops);
-   ```
-
-   EF Core 声明方式：
-
-   ```csharp
-   entity.HasIndex(e => e.Title)
-         .HasMethod("gin")
-         .HasOperators("gin_trgm_ops");
-   ```
-
-3. 查询改写（`EF.Functions.ILike` 走 trgm 索引）：
-
-   ```csharp
-   source = source.Where(p => EF.Functions.ILike(p.Title, $"%{kw}%")
-                           || EF.Functions.ILike(p.Summary, $"%{kw}%"));
-   source = source.OrderByDescending(p => EF.Functions.TrigramsSimilarity(p.Title, kw))
-                  .ThenByDescending(p => p.PublishedAt);
-   ```
-
-4. **收敛查询入口**：把搜索逻辑封装到 `IPostSearchService`，
-   这样阶段二换实现时**上层无需改动**。
-
-> **权衡**：`pg_trgm` 解决的是「模糊匹配走索引」，**不是**语义分词检索（无同义词、无词干还原）。
-> 对博客规模与检索诉求，这是投入产出比最高的方案。
-
-### 5.3 阶段二：真 FTS（未来）
-
-需要分词扩展（`zhparser` 或 `pg_jieba`），二者**都不在当前镜像**，需：
-
-- 自行编译安装（`zhparser` 基于 SCWS 分词库）
-- 或换带这些扩展的镜像 / 自建 Dockerfile
-- 或在应用层分词（如 jieba 的 .NET 移植），把结果写入 `tsvector` 列
+若将来需要，可加：
 
 ```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX ix_posts_title_trgm ON "Posts" USING gin ("Title" gin_trgm_ops);
+```
+
+> **当前不实施**，仅在 FTS 实测发现短词召回不足时再补。避免同时维护两套索引。
+
+### 5.4 实施：`zhparser` + `tsvector` 生成列 + GIN（`[已决定]` T9）
+
+#### 第 1 步：环境（已在本机验证，需固化镜像）
+
+`zhparser` **不在官方镜像**，须编译 SCWS + zhparser。**我已在开发容器内完成并实测**，
+完整步骤与踩坑记录见 [tech.md](./tech.md) §5.3.1 与 §9.1。
+
+#### 第 2 步：检索配置（迁移中执行）
+
+```sql
+CREATE EXTENSION IF NOT EXISTS zhparser;
+
 CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
-ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l WITH simple;
+-- n名词 v动词 a形容词 i成语 e叹词 l习用语 j简称 q量词
+ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l,j,q WITH simple;
+```
+
+> 用 `simple` 字典：只做小写归一化，不做词干还原与停用词过滤。
+> 中文不需要词干还原；且能让中英混合文本里的英文词原样保留（`EF`、`Core` 均可命中）。
+
+**实测分词效果**（已在本机 `blog_stage2` 库验证）：
+
+```sql
+SELECT to_tsvector('chinese', '使用 EF Core 做数据库优化与全文检索');
+-- 'core':3 'ef':2 '优化':6 '使用':1 '做':4 '全文检索':7 '数据库':5
+```
+
+#### 第 3 步：`tsvector` 生成列
+
+```sql
+ALTER TABLE "Posts" ADD COLUMN "SearchVector" tsvector
+  GENERATED ALWAYS AS (
+      setweight(to_tsvector('chinese', coalesce("Title",   '')), 'A') ||
+      setweight(to_tsvector('chinese', coalesce("Summary", '')), 'B') ||
+      setweight(to_tsvector('chinese', coalesce("Content", '')), 'C')
+  ) STORED;
+```
+
+| 设计点 | 说明 |
+|---|---|
+| **生成列而非触发器** | 数据库自动维护，应用层无需关心，不存在「忘了同步索引列」的可能 |
+| **`setweight`** | 标题 `A` > 摘要 `B` > 正文 `C`，让标题命中优先 → 解决「无相关度排序」 |
+| **`STORED`** | PostgreSQL 生成列仅支持 `STORED`；占额外磁盘但可被索引 |
+| **单列合并** | 把三个字段合成一个 `tsvector`，只需一个 GIN 索引 |
+
+> **写入代价**：每次 INSERT/UPDATE 都要重算 `tsvector`；`Content` 很长时开销与存储都会增加。
+> 这是 T9 明确选择的取舍（要检索能力）。
+
+#### 第 4 步：GIN 索引
+
+```sql
 CREATE INDEX ix_posts_search ON "Posts" USING gin ("SearchVector");
 ```
 
-### 5.4 中文检索的额外注意点
+#### 第 5 步：EF Core 落地要点
+
+EF Core **不原生支持**生成列表达式，需在迁移中手写 SQL：
+
+```csharp
+// 迁移 Up()
+migrationBuilder.Sql(@"
+    ALTER TABLE ""Posts"" ADD COLUMN ""SearchVector"" tsvector
+      GENERATED ALWAYS AS (...) STORED;");
+migrationBuilder.Sql(@"CREATE INDEX ix_posts_search ON ""Posts"" USING gin (""SearchVector"");");
+```
+
+实体侧把 `SearchVector` 作为**只读影子属性**映射，避免 EF 尝试写入：
+
+```csharp
+entity.Property<string>("SearchVector")
+      .HasColumnName("SearchVector")
+      .HasColumnType("tsvector")
+      .ValueGeneratedOnAddOrUpdate();   // 关键：告诉 EF 该列由数据库生成
+```
+
+> **实践建议**：迁移里的生成列与索引**全部用 `migrationBuilder.Sql`** 手写，
+> 比试图让 EF 推导更可控、更易读，也便于将来调整权重。
+
+#### 第 6 步：查询改写
+
+```csharp
+// plainto_tsquery：把自然语言输入转 tsquery（多词默认 AND），用户输入无需转义
+var q = EF.Functions.PlainToTsQuery("chinese", kw);
+source = source.Where(p => p.SearchVector.Matches(q));
+source = source.OrderByDescending(p => p.SearchVector.Rank(q))   // 相关度（权重生效）
+                 .ThenByDescending(p => p.PublishedAt);
+```
+
+| 函数 | 用途 |
+|---|---|
+| `plainto_tsquery` | 自然语言 → `tsquery`；**不需要手动转义用户输入**（对比 `to_tsquery` 会被特殊字符破坏语法） |
+| `ts_rank` | 相关度打分，配合 `setweight` 让标题命中排前 |
+
+> **必须收敛查询入口**：封装到 `IPostSearchService`。
+> 这样将来调整权重、换分词器或补 trgm 兜底时，**Controller 与前端无需改动**。
+
+### 5.5 中文检索的注意点
 
 | 注意点 | 说明 |
 |---|---|
-| 无空格分隔 | 所有中文检索方案的根本问题（trigram 绕过，分词正面解决） |
-| 停用词 | 中文扩展需配置停用词表 |
-| 同义词 | FTS 词典可配（「数据库」≈「DB」）；trigram 做不到 |
-| 混合语言 | 博客常中英混杂（如「使用 EF Core 做 ORM」），需确保分词对英文也正常 |
+| 无空格分隔 | `zhparser` 已正面解决（词级切分） |
+| 停用词 | 用 `simple` 不过滤；如需过滤可换 `english` 或自建词典 |
+| 同义词 | 可通过自定义同义词词典扩展（`[计划中]`），当前不做 |
+| 词干还原 | 中文不需要；英文用 `simple` 不做还原（`running` 不命中 `run`） |
+| 混合语言 | **已实测正常**（`使用 EF Core 做 ORM` 可被 `core` 命中） |
+| 检索配置是库级对象 | `chinese` 配置与扩展必须在迁移**最先**执行，早于建列与索引 |
+| 短词召回 | FTS 按词元匹配，`EF` 不命中 `EFCore`；需要时补 trgm（§5.3） |
+| **镜像固化（T11）** | 手工编译的扩展**不在镜像里**，容器重建即失效 → 必须写 Dockerfile（见 [tech.md](./tech.md) §9.1） |
 
 ---
 
@@ -702,8 +769,7 @@ sequenceDiagram
   "Issuer": "blog-api",
   "Audience": "blog-frontend",
   "SigningKey": "",          // 必须来自环境变量/密钥库，禁止入库
-  "AccessTokenMinutes": 30,
-  "EnableRefreshToken": false
+  "AccessTokenMinutes": 30
 }
 ```
 
@@ -728,8 +794,8 @@ sequenceDiagram
 
 | 算法 | 说明 | 依赖 |
 |---|---|---|
-| **Argon2id** | 2015 年密码哈希竞赛冠军，**当前推荐** | 需 NuGet |
-| **PBKDF2** | NIST 认可，**.NET 内置**（`Rfc2898DeriveBytes`） | 无新依赖 |
+| **PBKDF2** | NIST 认可，**.NET 内置**（`Rfc2898DeriveBytes`） | ✅ **本项目采纳（T3）** |
+| Argon2id | 抗 GPU 更强 | 需 NuGet（未采纳，理由见 [tech.md](./tech.md) §2.6） |
 | BCrypt | 老牌广泛使用 | 需 NuGet |
 
 无论选哪个：每用户独立随机盐、工作因子可调、校验用**恒定时间比较**（算法库通常内建）。待 T3 确认。
@@ -742,7 +808,11 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 |---|---|
 | 短有效期 | Access Token 建议 15–30 分钟 |
 | Redis 黑名单 | 存 `blog:auth:blacklist:v1:{jti}`，TTL = 剩余有效期；Redis 不可用时降级 Memory（单实例 OK） |
-| 密码变更即失效 | 在 User 上记录 `TokenVersion`，签发时写入 claim，校验时比对 —— 无需存黑名单即可一次性踢掉所有旧 token（**推荐**） |
+| **`User.TokenVersion`** | User 上存整数；签发时写入 claim，校验时与库中比对。改密码/踢下线只需 `INCR`。**不依赖 Redis**，多实例下也有效 —— **推荐方案** |
+
+> **`[已决定]` 不做 Refresh Token（T7）**：只发 Access Token，有效期 30 分钟。
+> 因此**没有 `/api/auth/refresh` 端点**。理由：管理后台是低频操作，30 分钟足够完成一次编辑；
+> 双 token 会显著增加前后端复杂度与安全面。
 
 ---
 
@@ -822,11 +892,9 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 
 | 方法 | 路由 | 权限 | 说明 |
 |---|---|---|---|
-| POST | `/api/auth/author/register` | 匿名 | 作者注册（是否开放待 T1） |
 | POST | `/api/auth/author/login` | 匿名 | 作者登录 |
 | POST | `/api/auth/admin/login` | 匿名 | 管理员登录 |
-| POST | `/api/auth/refresh` | 匿名 | 刷新 token（若启用） |
-| POST | `/api/auth/logout` | 已认证 | 加入黑名单 / 提升 TokenVersion |
+| POST | `/api/auth/logout` | 已认证 | 提升 `User.TokenVersion`，使该用户所有旧 token 立即失效 |
 | GET | `/api/auth/me` | 已认证 | 当前用户信息 |
 | GET | `/api/users` | Admin | 账号列表 |
 | POST | `/api/users` | Admin | 创建账号 |
@@ -1021,7 +1089,7 @@ sequenceDiagram
 | 4 | 草稿权限保护（`includeUnpublished` + 归属过滤） | **P0** | Q7 |
 | 5 | 密码慢哈希实现 | **P0** | §6.4 |
 | 6 | 错误码补全 4003/4010/4030/4130 | P1 | E5/E6 |
-| 7 | 搜索改 `pg_trgm` + GIN + 相关度排序 | P1 | §5 |
+| 7 | 搜索改 **真 FTS**（zhparser + 生成列 + GIN + 相关度排序） | P1 | T9 / §5.4 |
 | 8 | 专栏实体与 CRUD | P1 | business §4.8 |
 | 9 | **不计数只读详情端点**（修浏览量污染） | P1 | Q12 |
 | 10 | `Summary` 自动/覆盖逻辑（含 `IsSummaryAuto`） | P1 | Q5 |
@@ -1077,7 +1145,7 @@ sequenceDiagram
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 索引 | `[已实现]` + `[已决定]` 补 trgm | §3.5 |
+| 索引 | `[已实现]` + `[已决定]` 补 `SearchVector` GIN | §3.5 |
 | 投影查询 | `[已实现]` | 读侧仓储 `Select` 到 DTO |
 | 分页 | `[已实现]` | `Skip/Take`，`pageSize` 有上限归一化 |
 | 缓存三档 | `[已实现]` | §4 |
@@ -1126,12 +1194,13 @@ sequenceDiagram
 | P0-3 | **建立测试工程** | 零测试，后续所有重构无安全网（§10.1） | 中 | 低（纯增量） |
 | P0-4 | **敏感配置外置** | 连接串与 JWT 签名密钥不可入库（R7） | 低 | 低 |
 | P0-5 | **初始管理员的安全初始化** | 种子密码不能硬编码进迁移（§3.7） | 低 | 低 |
+| P0-6 | **自定义 PostgreSQL 镜像（含 zhparser）** | 手工编译的扩展不在镜像里，容器重建后全文检索直接失效（T11） | 低—中 | 中：需重跑迁移验证；镜像构建需联网 |
 
 ### P1 — 重要，不阻塞上线
 
 | # | 项 | 理由 | 成本 | 风险 |
 |---|---|---|---|---|
-| P1-1 | 搜索改 `pg_trgm` + GIN | 全表扫描 + 无相关度排序（§5） | 中 | 中：需迁移；`Content` 索引膨胀 |
+| P1-1 | 搜索改**真 FTS**（`zhparser`+`tsvector`+GIN） | 全表扫描 + 无相关度排序（§5） | 中 | 中：需迁移建生成列与索引；**依赖自定义 PG 镜像**（P0-6） |
 | P1-2 | 不计数只读详情端点 | 后台取 version 会污染浏览量（Q12） | 低 | 低 |
 | P1-3 | 专栏 CRUD | business §4.8 已决定 | 中 | 低：纯增量 |
 | P1-4 | `Summary` 自动/覆盖 | 当前无条件重算，作者填写会被覆盖（Q5） | 低 | 低：需迁移加 `IsSummaryAuto` |
@@ -1151,7 +1220,7 @@ sequenceDiagram
 
 | # | 项 | 理由 | 成本 | 风险 |
 |---|---|---|---|---|
-| P2-1 | 真 FTS（`zhparser`） | `pg_trgm` 无同义词/词干能力（§5.3） | 中—高 | 中：需编译扩展或换镜像 |
+| P2-1 | FTS 增强（同义词词典、停用词表） | 进一步提升召回与精度 | 中 | 低：只改词典配置 |
 | P2-2 | 统计查询合并 | 多次 `Count`/`Sum` 可合并为单次聚合 | 低 | 低 |
 | P2-3 | 消息队列（事件驱动） | 当前无异步需求，过早引入增加运维负担 | 高 | 中 |
 | P2-4 | OSS / CDN 迁移 | 本地磁盘无法扩展（Q9） | 中 | 中：需数据迁移与路径兼容 |

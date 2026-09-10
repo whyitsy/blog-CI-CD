@@ -201,8 +201,7 @@ flowchart TB
   PUB --> P7["collections → CollectionListView<br/>[已决定]"]
   PUB --> P8["collections/:slug → CollectionDetailView<br/>[已决定]"]
 
-  AUTH --> A1["login → AuthorLoginView<br/>[已决定]"]
-  AUTH --> A2["register → AuthorRegisterView<br/>[已决定]"]
+  AUTH --> A1["login → AuthorLoginView<br/>[已决定]<br/>（无注册入口）"]
   AUTH --> A3["admin/login → AdminLoginView<br/>[已决定]"]
 
   ME --> M1["'' → MyPostsView 我的文章/草稿箱<br/>[已决定]"]
@@ -241,11 +240,13 @@ flowchart TB
 
 **认证页** `[已决定]`
 
+> `[已决定]` **没有注册页**（T1）：作者账号由管理员在 `/admin/users` 创建。
+> 因此路由、视图、API 三处都不需要 register。
+
 | # | 路由 | 说明 |
 |---|---|---|
 | 9 | `/login` | 作者登录 |
-| 10 | `/register` | 作者注册（是否开放待 T1） |
-| 11 | `/admin/login` | 管理员登录（**无注册入口**） |
+| 10 | `/admin/login` | 管理员登录（**无注册入口**） |
 
 **作者工作区** `[已决定]`
 
@@ -595,7 +596,6 @@ flowchart LR
 | `SiteFooter` | `GET /api/site/stats`（经 store） |
 | `HeroSection` | 读 store |
 | `AuthorLoginView` | `[已决定]` `POST /api/auth/author/login` |
-| `AuthorRegisterView` | `[已决定]` `POST /api/auth/author/register` |
 | `AdminLoginView` | `[已决定]` `POST /api/auth/admin/login` |
 | `MyPostsView` | `[已决定]` `GET /api/posts?includeUnpublished=true&mine=true` |
 | `MyProfileView` | `[已决定]` `GET /api/authors/{me}` + `PUT /api/authors/{id}` |
