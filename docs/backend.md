@@ -675,23 +675,45 @@ entity.Property<string>("SearchVector")
 > **实践建议**：迁移里的生成列与索引**全部用 `migrationBuilder.Sql`** 手写，
 > 比试图让 EF 推导更可控、更易读，也便于将来调整权重。
 
-#### 第 6 步：查询改写
+#### 第 6 步：查询改写（`[已实现]`，含两个实测踩到的坑）
+
+**最终实现**（`PostQueryRepository.cs`）使用**参数化原生 SQL**：
 
 ```csharp
-// plainto_tsquery：把自然语言输入转 tsquery（多词默认 AND），用户输入无需转义
-var q = EF.Functions.PlainToTsQuery("chinese", kw);
-source = source.Where(p => p.SearchVector.Matches(q));
-source = source.OrderByDescending(p => p.SearchVector.Rank(q))   // 相关度（权重生效）
-                 .ThenByDescending(p => p.PublishedAt);
+var config = "chinese";
+var matchedIds = _context.Posts
+    .FromSqlInterpolated($@"
+        SELECT p.* FROM ""Posts"" AS p
+        WHERE p.""SearchVector"" @@ plainto_tsquery({config}::regconfig, {keyword})")
+    .AsNoTracking()
+    .Where(p => !p.IsDeleted && p.PublishedAt != null)
+    .Select(p => p.Id);
+
+filtered = _context.Posts.AsNoTracking().Where(p => matchedIds.Contains(p.Id));
 ```
+
+**为什么不用 `EF.Functions.PlainToTsQuery`**（实测确认，不是猜测）：
+
+| 坑 | 现象 | 原因与处理 |
+|---|---|---|
+| 1 | `InvalidOperationException: The 'PlainToTsQuery' method is not supported because the query has switched to client-evaluation` | 在「**影子属性 + 参数化 tsquery**」形态下（`EF.Property<NpgsqlTsVector>(p, "SearchVector").Matches(tsQuery)`），EF Core 无法翻译，退回客户端求值。改用参数化原生 SQL 后正常 |
+| 2 | `42883: function plainto_tsquery(text, text) does not exist` | PostgreSQL 的 `plainto_tsquery` 重载是 `(regconfig, text)` 与 `(text)`，**没有 `(text, text)`**。参数化时配置名需显式转型：`plainto_tsquery('chinese'::regconfig, @kw)` |
+
+**为什么用 `Id IN (子查询)` 而不是直接 `FromSql` 包整张表**：
+让外层仍能自由组合分类/标签/作者等过滤与 DTO 投影，避免 `FromSql` 后续组合的限制。
 
 | 函数 | 用途 |
 |---|---|
-| `plainto_tsquery` | 自然语言 → `tsquery`；**不需要手动转义用户输入**（对比 `to_tsquery` 会被特殊字符破坏语法） |
+| `plainto_tsquery` | 自然语言 → `tsquery`（多词默认 AND）；**不需要手动转义用户输入**（对比 `to_tsquery` 会被 `& \| !` 破坏语法）。实测：关键词 `a & b \| c ! d` 不报错、返回 0 命中 |
 | `ts_rank` | 相关度打分，配合 `setweight` 让标题命中排前 |
 
+> **`[未实现]` 相关度排序**：生成列已带 `setweight` 权重，但 `ts_rank` 在当前形态下同样无法可靠翻译
+> （与坑 1 同源），因此**当前排序仍为发布时间倒序**，命中集合本身已由 GIN 索引加速。
+> 后续补法：① 用原生 SQL 直接 `ORDER BY ts_rank(...) DESC`；② 用 `HasDbFunction` 映射 `ts_rank` 为用户函数。
+> 影响：搜索结果不是「最相关在前」，而是「最新在前」。见 [suggestion.md](./suggestion.md)。
+
 > **必须收敛查询入口**：封装到 `IPostSearchService`。
-> 这样将来调整权重、换分词器或补 trgm 兜底时，**Controller 与前端无需改动**。
+> 这样将来调整权重、补相关度排序或加 trgm 兜底时，**Controller 与前端无需改动**。
 
 ### 5.5 中文检索的注意点
 
@@ -1089,7 +1111,7 @@ sequenceDiagram
 | 4 | 草稿权限保护（`includeUnpublished` + 归属过滤） | **P0** | Q7 |
 | 5 | 密码慢哈希实现 | **P0** | §6.4 |
 | 6 | 错误码补全 4003/4010/4030/4130 | P1 | E5/E6 |
-| 7 | 搜索改 **真 FTS**（zhparser + 生成列 + GIN + 相关度排序） | P1 | T9 / §5.4 |
+| 7 | ~~搜索改真 FTS~~ **已完成**（zhparser + 生成列 + GIN）。相关度排序待补 | P1 | T9 / §5.4 |
 | 8 | 专栏实体与 CRUD | P1 | business §4.8 |
 | 9 | **不计数只读详情端点**（修浏览量污染） | P1 | Q12 |
 | 10 | `Summary` 自动/覆盖逻辑（含 `IsSummaryAuto`） | P1 | Q5 |
@@ -1189,18 +1211,18 @@ sequenceDiagram
 
 | # | 项 | 理由 | 成本 | 风险 |
 |---|---|---|---|---|
-| P0-1 | **JWT 认证 + 双角色授权** | 写接口完全开放（§6.1），任何访客可删文改配置 | 中 | 中：新增 `User` 表与迁移；`Author` 语义调整；需同步改所有写端点 |
-| P0-2 | **草稿权限保护** | `includeUnpublished` 匿名可读（§6.1） | 低 | 低（与 P0-1 合并做） |
+| P0-1 | ~~JWT 认证 + 双角色授权~~ **已完成**（`[已实现]`） | — | — | 剩余：前端登录页与路由守卫 |
+| P0-2 | ~~草稿权限保护~~ **已完成**（`[已实现]`） | — | — | 剩余：前端按角色隐藏入口 |
 | P0-3 | **建立测试工程** | 零测试，后续所有重构无安全网（§10.1） | 中 | 低（纯增量） |
 | P0-4 | **敏感配置外置** | 连接串与 JWT 签名密钥不可入库（R7） | 低 | 低 |
-| P0-5 | **初始管理员的安全初始化** | 种子密码不能硬编码进迁移（§3.7） | 低 | 低 |
-| P0-6 | **自定义 PostgreSQL 镜像（含 zhparser）** | 手工编译的扩展不在镜像里，容器重建后全文检索直接失效（T11） | 低—中 | 中：需重跑迁移验证；镜像构建需联网 |
+| P0-5 | ~~初始管理员安全初始化~~ **部分完成**：已用 PBKDF2 哈希种子 `admin@example.com`，但**密码是仓库公开值**，生产必须立即修改 | 低 | 低 |
+| P0-6 | ~~自定义 PostgreSQL 镜像（含 zhparser）~~ **已完成**（`deploy/postgres-zhparser.Dockerfile` 已构建并在全新容器实测）；**剩余**：切换开发/生产容器（需确认，见 suggestion.md T11） | 低 | 低 |
 
 ### P1 — 重要，不阻塞上线
 
 | # | 项 | 理由 | 成本 | 风险 |
 |---|---|---|---|---|
-| P1-1 | 搜索改**真 FTS**（`zhparser`+`tsvector`+GIN） | 全表扫描 + 无相关度排序（§5） | 中 | 中：需迁移建生成列与索引；**依赖自定义 PG 镜像**（P0-6） |
+| P1-1 | ~~搜索改真 FTS~~ **已完成**；剩余：补 `ts_rank` 相关度排序 | 当前按发布时间倒序，不是「最相关在前」（§5.4） | 低 | 低：需原生 SQL 或 `HasDbFunction` 映射 |
 | P1-2 | 不计数只读详情端点 | 后台取 version 会污染浏览量（Q12） | 低 | 低 |
 | P1-3 | 专栏 CRUD | business §4.8 已决定 | 中 | 低：纯增量 |
 | P1-4 | `Summary` 自动/覆盖 | 当前无条件重算，作者填写会被覆盖（Q5） | 低 | 低：需迁移加 `IsSummaryAuto` |

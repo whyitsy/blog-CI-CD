@@ -89,3 +89,24 @@
 - `src/layouts/AdminLayout.vue`：管理端侧边栏布局（≤880px 折叠为横向 tab，用最长前缀匹配决定高亮与标题）
 - `src/components/admin/TaxonomyManager.vue`：分类/标签共用的管理 UI
 - `src/router/index.ts`：两个父路由（`/` → DefaultLayout，`/admin` → AdminLayout），子路由 name 保持与原有一致
+
+## 认证与全文检索（2026-09-11 已实现）
+- **认证**：JWT 仅 Access Token（30 分钟，T7），PBKDF2 密码哈希（T3），TokenVersion 主动失效（不依赖 Redis）
+  - `User` 与 `Author` 分离：User 是账号（凭据+角色），Author 是内容属性（署名），可选弱关联 `User.AuthorId`
+  - 双登录端点 `/api/auth/author/login`、`/api/auth/admin/login`；**无注册端点**（T1，作者由管理员在 /api/users 创建）
+  - 授权策略 `AdminOnly` / `ContentWriter`；归属校验必须在 **Service 层**（`EnsureCanManage`）
+  - 草稿保护：`includeUnpublished` 需登录 + Author 只看自己创建的（数据级过滤）
+  - 种子管理员：`admin@example.com` / `Admin@12345`（**开发用，生产必须改**）
+  - 签名密钥：`Jwt:SigningKey`；开发配置里有标注清楚的开发密钥，**生产用环境变量 `Jwt__SigningKey`**（双下划线）
+- **中文全文检索（FTS）**：zhparser + `Posts.SearchVector` 生成列 + GIN 索引
+  - 两个必踩的坑：① `EF.Functions.PlainToTsQuery` 在「影子属性+参数」形态下被判客户端求值 → 改用参数化原生 SQL；
+    ② `plainto_tsquery` 必须显式 `::regconfig` 转型，否则报 `42883 function plainto_tsquery(text, text) does not exist`
+  - **未完成**：相关度排序（ts_rank 翻译受限），当前按发布时间倒序（T12）
+- **多实例守护**：`Deployment:InstanceCount > 1` 或 `RequireRedis=true` 时必须用 Redis，否则**启动即失败**（T5）
+- **迁移与宿主解耦**：`BlogDbContextFactory`（IDesignTimeDbContextFactory）让 `dotnet ef` 不依赖启动配置
+  - 注意：`dotnet ef migrations add` **不要加 `--no-build`**，否则会读到旧的编译产物导致迁移生成不完整
+
+## 构建与验证易错点
+- `Blog.WebApi.csproj` 已在构建前自动 `taskkill Blog.WebApi.exe`；若仍报 MSB3027 锁文件，手工再杀一次
+- `dotnet ef migrations remove` 不会回退模型快照，**不要依赖它来撤销未应用的迁移**；
+  应 `git checkout -- BlogDbContextModelSnapshot.cs` + 手工删迁移文件，然后重新 add

@@ -46,6 +46,10 @@ namespace Blog.Infrastructure.Persistence
         /// 但**这个密码是公开在仓库里的**，因此：
         ///   - 生产部署后必须立刻登录并修改密码（或在部署流程中用脚本重置）
         ///   - 生产环境不应依赖此种子账号，建议由部署脚本创建专属管理员
+        ///
+        /// 复现方式（如需换成别的初始密码）：
+        ///   var hash = new Blog.Infrastructure.Security.Pbkdf2PasswordHasher().Hash("你的密码");
+        /// 然后替换下面的常量即可。也可在后台用「重置密码」接口改，无需改代码。
         /// </summary>
         private const string SeedAdminPasswordHash =
             "pbkdf2-sha512$210000$Rc6nVI3/2LQ+vmRlYDCCyQ==$RbxCnKNUm29IVZ72izuS7pFoH/W8t5KkIvGZiOu/YLQ=";

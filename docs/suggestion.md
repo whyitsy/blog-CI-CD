@@ -12,7 +12,16 @@
 
 | # | 问题 | 状态 | 详见 |
 |---|---|---|---|
-| **T11** | **如何把 `zhparser` 固化进部署环境？** | `[待确认]` | [tech.md](./tech.md) §5.3.1 / §9.1 |
+| **T11** | **如何把 `zhparser` 固化进部署环境？** | `[已实现，待切换]` 见下方说明 | [tech.md](./tech.md) §5.3.1 / §9.1 |
+
+> **T11 进展（2026-09-11）**：已写出并**实测通过** `deploy/postgres-zhparser.Dockerfile`
+> （基于 `postgres:18.6` 编译 SCWS + zhparser），并在**独立端口的全新容器**上验证：
+> init 脚本自动执行、扩展与 `chinese` 配置创建成功、中文分词为词级、`plainto_tsquery` 匹配返回 `t`。
+> 同时 EF 迁移里也包含了 `CREATE EXTENSION` + `CREATE TEXT SEARCH CONFIGURATION`，覆盖「已有库」场景。
+>
+> **剩下唯一需要你决定的一步**：是否把**开发容器 `pgsql` 换成这个自定义镜像**。
+> 数据在命名卷上，替换容器不会丢数据；步骤见 `deploy/README.md` §4。
+> 在切换之前，开发容器里的 zhparser 仍是手工安装的 —— **该容器一旦重建，全文检索会立即失效**。
 
 ### 为什么这是阻塞项
 
@@ -55,6 +64,14 @@ ERROR:  text search configuration "chinese" does not exist
 **如果你希望我现在就做**，我可以：① 写 Dockerfile；② 构建带 zhparser 的镜像；
 ③ 用它替换当前容器；④ 跑 EF 迁移，验证 `CREATE EXTENSION` / `CREATE TEXT SEARCH CONFIGURATION`
 在全新库上能自动完成；⑤ 端到端验证检索可用。
+
+---
+
+## 1.1 实现过程中发现的新问题
+
+| # | 问题 | 状态 | 说明 |
+|---|---|---|---|
+| **T12** | 搜索结果**未按相关度排序**，仍是发布时间倒序 | `[待确认]` | 生成列已带 `setweight` 权重（标题 A > 摘要 B > 正文 C），但 `ts_rank` 在 Npgsql 的「影子属性 + 参数化 tsquery」形态下无法可靠翻译（与 `plainto_tsquery` 同一个坑，详见 [backend.md](./backend.md) §5.4）。当前命中集合已由 GIN 索引加速，只是**排序不是最相关在前**。补法二选一：① 原生 SQL 里直接 `ORDER BY ts_rank(...)`；② 用 `HasDbFunction` 把 `ts_rank` 映射为用户函数。**成本低（约 0.5 天）**，建议做 |
 
 ---
 
