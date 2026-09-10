@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { createCategory, getCategories } from '@/api/categories'
 import { createTag, getTags } from '@/api/tags'
+import { useAuthStore } from '@/stores/auth'
 import type { CategoryDto, PostDetailDto, PostPayload, TagDto } from '@/types'
 
 /** 编辑器 props：
@@ -26,6 +27,15 @@ const coverImage = ref('')
 const categoryId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
 const publish = ref(true)
+
+const auth = useAuthStore()
+
+/**
+ * 分类/标签的写接口仅 Admin 可用（T6 决策）。
+ * 作者也会用这个编辑器，因此「快速新建」只对管理员显示，
+ * 避免出现「看得到、点了报 403」的死路（见 suggestion.md T13）。
+ */
+const canManageTaxonomy = computed(() => auth.isAdmin)
 
 const categories = ref<CategoryDto[]>([])
 const tags = ref<TagDto[]>([])
@@ -170,7 +180,7 @@ function submit() {
         </select>
       </label>
 
-      <div class="field">
+      <div v-if="canManageTaxonomy" class="field">
         <span class="field-label">快速新建分类</span>
         <div class="inline-add">
           <input v-model="newCategoryName" type="text" placeholder="分类名" @keyup.enter="addCategory" />
@@ -192,9 +202,13 @@ function submit() {
         >
           {{ t.name }}
         </button>
-        <span v-if="!tags.length" class="empty">还没有标签，下方新建</span>
+        <span v-if="!tags.length" class="empty">
+          {{ canManageTaxonomy ? '还没有标签，下方新建' : '还没有标签，请联系管理员创建' }}
+        </span>
       </div>
-      <div class="inline-add">
+      <!-- 与「快速新建分类」保持一致的可见标签，避免只有占位符导致的可发现性问题 -->
+      <div v-if="canManageTaxonomy" class="inline-add">
+        <span class="inline-add-label">快速新建标签</span>
         <input v-model="newTagName" type="text" placeholder="新标签名" @keyup.enter="addTag" />
         <button type="button" class="btn-mini" :disabled="!newTagName.trim()" @click="addTag">添加</button>
       </div>
@@ -301,7 +315,15 @@ function submit() {
 
 .inline-add {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+}
+
+.inline-add-label {
+  flex-shrink: 0;
+  font: var(--text-caption);
+  color: var(--text-subtle);
+  white-space: nowrap;
 }
 .btn-mini {
   padding: 0 var(--space-3);
