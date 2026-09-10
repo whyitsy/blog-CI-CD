@@ -156,3 +156,18 @@
 - **错误做法**：`Fetch.enable` + glob `*/api/posts*` —— 会**误伤 JS 模块 `src/api/posts.ts`**，
   导致页面白屏并得出「骨架没生效」的错误结论（我为此白排查了数轮）
 - 同理，`Network.emulateNetworkConditions` 加高延迟会连 JS bundle 一起卡住，页面直接空白
+
+## 专栏功能（2026-09-11 已实现，T15 / T2）
+- 多对多：`Collections` + `PostCollections`（显式连接实体，带专栏内 `SortOrder`）
+- 后端：`CollectionsController`（7 端点）
+  - 公开：`GET /api/collections`（含?includeUnpublished 仅 Admin）、`GET /api/collections/{slug}`
+  - 管理端：`GET /api/collections/id/{id}`、POST/PUT/DELETE、`PUT /{id}/posts`（整体编排）
+  - 未发布专栏对匿名返回 **404**（不暴露存在性）；`postCount` 只统计已发布文章
+- 前端：`/collections`、`/collections/:slug`、`/admin/collections`（编排面板：勾选+上下移+保存）
+  - 编辑器「所属专栏」多选；文章详情显示专栏徽章（虚线+📚，与分类/标签三者可区分）
+- ⚠️ **多对多连接行的坑（已踩并修）**：`BaseRepository.GetByIdAsync` **不加载导航集合**，
+  直接改 `collection.PostLinks` 会让 EF 把已存在的连接行当新增 INSERT，
+  报 `23505 duplicate key ... PK_PostCollections`（表现为保存必 500）。
+  → 必须用 `ICollectionRepository.GetWithPostsAsync`（`Include(c => c.PostLinks)`）
+- 前端已与后端能力对齐：`PostDetailDto` 补 `collections`/`createdByUserId`；
+  `PostPayload` 补 `collectionIds`；create/update 补 `summary`（此前编辑器有摘要框但不提交）

@@ -82,9 +82,15 @@ ERROR:  text search configuration "chinese" does not exist
 | **T13** | 作者在编辑器里点「快速新建分类/标签」会被后端 **403** | ✅ **已修** | 采用选项①：`PostEditor` 用 `canManageTaxonomy`（isAdmin）隐藏该 UI，无标签时空状态改为「请联系管理员创建」。顺带给标签新建补了可见标签，与分类一致。若将来希望作者也能建分类，再评估选项② |
 | **T14a** | **账号管理页面** | ✅ **已完成** | `views/AdminUserListView.vue`：列表 / 新建（即作者账号创建入口）/ 行内编辑角色与关联作者与启用状态 / 重置密码 / 停用。**且不给自己显示「停用」**，避免自锁。T1 的「管理员创建作者账号」至此闭环 |
 | **T14b** | **作者管理页面（Author 内容层）** | `[计划中]` | 后端目前只有 `GET /api/authors` 与 `PUT /api/authors/{id}`，**没有创建/删除作者端点**，因此前端无法做完整的作者 CRUD。需要先补 `POST/DELETE /api/authors`。注意语义：Author 是内容（像 Category），不是账号 |
-| **T15** | 专栏只有数据模型与示例数据，没有 CRUD 端点与页面 | `[计划中]` | `Collections`/`PostCollections` 表、`ICollectionRepository`、文章关联（`collectionIds`）都已就绪；缺 `/api/collections` 的读接口（含「专栏详情 + 其文章列表」）与 `/admin/collections` 页面，以及前台 `/collections`、`/collections/:slug` |
+| **T15** | **专栏功能全链路** | ✅ **已完成** | 后端 `CollectionsController`（公开读 + Admin 写 + 文章编排 `PUT /{id}/posts`）；前端 `/collections`、`/collections/:slug`、`/admin/collections`（含编排面板）、编辑器「所属专栏」多选、文章详情专栏徽章。未发布专栏对匿名返回 404 |
 
-**建议顺序**：~~T13~~（已修）→ ~~T14a~~（已完成）→ **T15（专栏）** → T14b（作者 CRUD 需先补后端）→ T12（相关度排序）。
+**建议顺序**：~~T13~~（已修）→ ~~T14a~~（已完成）→ ~~T15 专栏~~（已完成）→ **T14b（作者 CRUD，需先补后端 `POST/DELETE /api/authors`）** → T12（相关度排序）。
+
+> **T15 实现中发现并修复的缺陷**：专栏文章编排保存**必 500**。
+> 原因是 `BaseRepository.GetByIdAsync` 不加载导航集合，`collection.PostLinks` 为空，
+> EF 便对**已存在**的连接行执行 INSERT，触发 `PK_PostCollections` 唯一约束冲突。
+> 新增 `ICollectionRepository.GetWithPostsAsync`（`Include(PostLinks)`）解决。
+> **教训**：凡是需要增删「多对多连接行」的场景，必须显式加载导航集合，不能用基类的 GetByIdAsync。
 
 ---
 

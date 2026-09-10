@@ -426,7 +426,7 @@ sequenceDiagram
 | **管理员登录** | `/admin/login` | `[已决定]` |
 | **账号管理（`User`）** | `/admin/users` | `[已决定]` **含创建作者账号**（T1 的唯一入口） |
 | **作者管理（`Author` 内容）** | `/admin/authors` | `[已决定]` |
-| **专栏管理** | `/admin/collections` | `[已决定]` |
+| **专栏管理** | `/admin/collections` | `[已实现]`（含文章编排：勾选、排序、保存） |
 
 外加前台作者工作区：`/me`（我的文章、草稿箱、个人资料）与 `/login`。
 **没有 `/register`**（T1 决定不开放自助注册）。
@@ -598,7 +598,7 @@ stateDiagram-v2
 | 明暗主题 | — | localStorage 持久化 |
 | Footer 统计 | — | `GET /api/site/stats` |
 
-`[已决定]` 新增：**专栏页** `/collections`、`/collections/:slug`。
+`[已实现]` 专栏页：`/collections`（列表）与 `/collections/:slug`（详情，含序号与专栏内顺序）。
 
 ### 7.2 作者工作区 `[已决定]`
 
@@ -624,7 +624,7 @@ stateDiagram-v2
 | **管理员登录** | `/admin/login` | `[已决定]` |
 | **账号管理** | `/admin/users` | `[已决定]` |
 | **作者管理** | `/admin/authors` | `[已决定]` |
-| **专栏管理** | `/admin/collections` | `[已决定]` |
+| **专栏管理** | `/admin/collections` | `[已实现]`（含文章编排：勾选、排序、保存） |
 
 ### 7.4 后端横切能力 `[已实现]`
 

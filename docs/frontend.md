@@ -198,8 +198,8 @@ flowchart TB
   PUB --> P4["categories → CategoriesView"]
   PUB --> P5["archive → ArchiveView"]
   PUB --> P6["posts → PostListView"]
-  PUB --> P7["collections → CollectionListView<br/>[已决定]"]
-  PUB --> P8["collections/:slug → CollectionDetailView<br/>[已决定]"]
+  PUB --> P7["collections → CollectionListView<br/>[已实现]"]
+  PUB --> P8["collections/:slug → CollectionDetailView<br/>[已实现]"]
 
   AUTH --> A1["login → AuthorLoginView<br/>[已决定]<br/>（无注册入口）"]
   AUTH --> A3["admin/login → AdminLoginView<br/>[已决定]"]
@@ -217,7 +217,7 @@ flowchart TB
   ADM --> D6["site → AdminSiteConfigView"]
   ADM --> D7["users → AdminUserListView<br/>[已决定]"]
   ADM --> D8["authors → AdminAuthorListView<br/>[已决定]"]
-  ADM --> D9["collections → AdminCollectionListView<br/>[已决定]"]
+  ADM --> D9["collections → AdminCollectionListView<br/>[已实现] 含编排面板"]
 
   R --> NF["/:pathMatch(.*)* → NotFoundView<br/>[已决定] 现为 redirect '/'"]
 ```
@@ -234,8 +234,8 @@ flowchart TB
 | 4 | `/categories` | `views/CategoriesView.vue` | 154 | `[已实现]` |
 | 5 | `/archive` | `views/ArchiveView.vue` | 264 | `[已实现]`（时间轴**内联实现**） |
 | 6 | `/posts` | `views/PostListView.vue` | 131 | `[已实现]` |
-| 7 | `/collections` | `views/CollectionListView.vue` | — | `[已决定]` |
-| 8 | `/collections/:slug` | `views/CollectionDetailView.vue` | — | `[已决定]` |
+| 7 | `/collections` | `views/CollectionListView.vue` | 189 | `[已实现]` 专栏列表 |
+| 8 | `/collections/:slug` | `views/CollectionDetailView.vue` | 248 | `[已实现]` 专栏详情（含序号与专栏内顺序） |
 | — | 搜索 | `components/search/SearchModal.vue` | 227 | `[已实现]`（弹窗，非路由） |
 
 **认证页** `[已决定]`
@@ -278,7 +278,7 @@ flowchart TB
 | 22 | `/admin/users` | `AdminUserListView.vue` | 611 | `[已实现]` 账号管理（作者账号的唯一创建入口，T14a） |
 | 23 | `/admin/profile` | `AdminProfileView.vue` | 341 | `[已实现]` 博主资料（改名以区别于「账号」） |
 | 24 | `/admin/authors` | — | — | `[计划中]` 需先补后端创建/删除作者端点（T14b） |
-| 25 | `/admin/collections` | — | — | `[计划中]`（T15） |
+| 25 | `/admin/collections` | `AdminCollectionListView.vue` | 683 | `[已实现]` 专栏管理（含**文章编排面板**） |
 
 **错误页**
 
@@ -611,8 +611,8 @@ flowchart LR
 | `TagsView` / `CategoriesView` | `GET /api/tags` / `GET /api/categories` |
 | `ArchiveView` | `GET /api/posts/archives` |
 | `PostListView` | `GET /api/posts`（tagId/categoryId）或 `GET /api/posts/search`（keyword） |
-| `CollectionListView` | `[已决定]` `GET /api/collections` |
-| `CollectionDetailView` | `[已决定]` `GET /api/collections/{slug}` |
+| `CollectionListView` | `[已实现]` `GET /api/collections` |
+| `CollectionDetailView` | `[已实现]` `GET /api/collections/{slug}` |
 | `SearchModal` | `GET /api/posts/search?keyword=&page=1&pageSize=10` |
 | `SiteFooter` | `GET /api/site/stats`（经 store） |
 | `HeroSection` | 读 store |
@@ -627,7 +627,7 @@ flowchart LR
 | `AdminSiteConfigView` | `GET/PUT /api/site/config`、`GET/PUT/DELETE /api/site/social-links`、`POST /api/files/upload` |
 | `AdminUserListView` | `[已决定]` `/api/users` CRUD |
 | `AdminAuthorListView` | `[已决定]` `/api/authors` CRUD |
-| `AdminCollectionListView` | `[已决定]` `/api/collections` CRUD |
+| `AdminCollectionListView` | `[已实现]` `/api/collections` CRUD + `PUT /{id}/posts` 编排 |
 
 ### 7.3 一次受保护写操作的完整往返
 
@@ -703,7 +703,7 @@ sequenceDiagram
 
 - 独立 `AdminLayout`（侧边栏 + 顶栏，窄屏折叠）
 - 文章：列表（含草稿/分页/骨架/窄屏折叠卡片）、新建、编辑、发布、下架、软删除
-- 编辑器：Markdown 文本区、封面 URL、分类下拉、标签多选、**内联新建分类/标签**、实时字数与阅读时长、发布开关
+- 编辑器：Markdown 文本区、封面 URL、分类下拉、标签多选、**所属专栏（可多选）**、**内联新建分类/标签**（仅 Admin 可见）、实时字数与阅读时长、发布开关
 - 分类/标签：列表 + 新增 + 行内改名 + 删除（乐观锁）
 - 用户资料：name/email/avatar/bio + 头像上传（含 `@error` 首字母兜底）
 - 网站配置：站点名、首屏副标题、背景图（URL/上传 + 预览）、建站日期；社交链接增删改 + 显示隐藏

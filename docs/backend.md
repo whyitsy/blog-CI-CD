@@ -882,17 +882,20 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 - 写操作并发控制：请求体带 `version`（int）
 - **认证**：受保护端点要求 `Authorization: Bearer <token>`
 
-### 7.2 现有端点 `[已实现]`（27 个）
+### 7.2 现有端点 `[已实现]`（45 个）
 
-| 控制器 | 行数 | 端点数 | 认证要求（`[已决定]`） |
+| 控制器 | 行数 | 端点数 | 认证要求 |
 |---|---|---|---|
-| `PostsController` | 106 | 8 | 读公开；写 `AuthorOrAdmin` |
+| `PostsController` | 106 | 9 | 读公开；写 `ContentWriter`；`/readonly` 需登录 |
 | `SiteController` | 68 | 6 | 读公开（social-links 管理端需 Admin）；写 `Admin` |
 | `CategoriesController` | 48 | 4 | 读公开；写 `Admin` |
 | `TagsController` | 48 | 4 | 读公开；写 `Admin` |
 | `AuthorsController` | 44 | 3 | 读公开；写本人或 `Admin` |
-| `FilesController` | 62 | 2 | 上传 `AuthorOrAdmin`；读取公开 |
-| **合计** | **376** | **27** | |
+| `FilesController` | 62 | 2 | 上传 `ContentWriter`；读取公开 |
+| `CollectionsController` | 115 | 7 | 读公开（未发布需 Admin）；写 `Admin` |
+| `AuthController` | 66 | 4 | 登录匿名；me/logout 需登录 |
+| `UsersController` | 76 | 6 | **整个控制器仅 `Admin`** |
+| **合计** | **667** | **45** | |
 
 **Posts**（`Controllers/PostsController.cs`）：
 
@@ -940,21 +943,57 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 | POST | `/api/files/upload` | 26-27 | 28-48 | multipart；`[RequestSizeLimit(50MB)]` |
 | GET | `/api/files/{**path}` | 50-51 | 52-61 | `[ResponseCache(86400)]`，支持 Range |
 
-### 7.3 待新增端点 `[已决定]`
+**Collections**（`Controllers/CollectionsController.cs`，T15 专栏）：
+
+| 方法 | 路由 | 特性行 | 权限 | 说明 |
+|---|---|---|---|---|
+| GET | `/api/collections` | 29 | 公开 | `includeUnpublished=true` 需 Admin；`postCount` 只统计已发布文章 |
+| GET | `/api/collections/{slug}` | 43 | 公开 | 详情 + 专栏内文章（按专栏 SortOrder）；未发布专栏对匿名 **404** |
+| GET | `/api/collections/id/{id:guid}` | 100 | Admin | 按 id 取详情（含未发布文章），编排面板用 |
+| POST | `/api/collections` | 56 | Admin | 创建（slug 唯一 + 字符集校验） |
+| PUT | `/api/collections/{id:guid}` | 65 | Admin | 更新（乐观锁） |
+| DELETE | `/api/collections/{id:guid}?version=` | 75 | Admin | 软删除，并清空 PostCollection 关联 |
+| PUT | `/api/collections/{id:guid}/posts` | 86 | Admin | **整体设置专栏内文章与顺序** |
+
+> **`/{slug}` 与 `/id/{id}` 分开的原因**：前者是公开路径，要判断未发布专栏是否对外可见；
+> 后者只给管理端（需看到未发布文章）。混在一条路径里会让可见性判断缠在一起。
+
+> ⚠️ **实现坑（已修）**：文章编排保存曾**必 500**。`BaseRepository.GetByIdAsync` 不加载导航集合，
+> `collection.PostLinks` 为空 → EF 把**已存在**的连接行当新增 INSERT →
+> `23505 duplicate key ... PK_PostCollections`。
+> 修复：新增 `ICollectionRepository.GetWithPostsAsync`（`Include(c => c.PostLinks)`），
+> 编排与删除路径都改用它。**改多对多连接行必须显式加载导航集合。**
+
+**Auth**（`Controllers/AuthController.cs`）：
 
 | 方法 | 路由 | 权限 | 说明 |
 |---|---|---|---|
-| POST | `/api/auth/author/login` | 匿名 | 作者登录 |
-| POST | `/api/auth/admin/login` | 匿名 | 管理员登录 |
-| POST | `/api/auth/logout` | 已认证 | 提升 `User.TokenVersion`，使该用户所有旧 token 立即失效 |
-| GET | `/api/auth/me` | 已认证 | 当前用户信息 |
-| GET | `/api/users` | Admin | 账号列表 |
-| POST | `/api/users` | Admin | 创建账号 |
-| PUT | `/api/users/{id}` | Admin | 更新（角色 / 启用停用） |
-| DELETE | `/api/users/{id}` | Admin | 禁用（建议不物理删除） |
-| GET/POST/PUT/DELETE | `/api/collections/**` | 读公开 / 写 Admin | 专栏 CRUD |
-| GET | `/api/collections/{slug}` | 匿名 | 专栏详情 + 文章列表 |
-| GET | `/api/posts/{id}/readonly` | AuthorOrAdmin | **不计数**的详情（修 P1-2） |
+| POST | `/api/auth/author/login` | 匿名 | 作者登录（仅 Author 角色可过） |
+| POST | `/api/auth/admin/login` | 匿名 | 管理员登录（仅 Admin 角色可过） |
+| GET | `/api/auth/me` | 登录 | 当前用户信息（不含凭据） |
+| POST | `/api/auth/logout` | 登录 | 提升 `TokenVersion`，该账号所有旧 token 立即失效 |
+
+**Users**（`Controllers/UsersController.cs`，整个控制器 `[Authorize(Policy = "AdminOnly")]`）：
+
+| 方法 | 路由 | 说明 |
+|---|---|---|
+| GET | `/api/users` | 账号列表（不含凭据字段） |
+| GET | `/api/users/{id:guid}` | 单个账号 |
+| POST | `/api/users` | **作者账号的唯一创建入口**（T1：不开放自助注册） |
+| PUT | `/api/users/{id:guid}` | 更新角色 / 关联作者 / 启用状态（乐观锁） |
+| POST | `/api/users/{id:guid}/reset-password` | 重置密码（提升 TokenVersion） |
+| POST | `/api/users/{id:guid}/disable` | 停用账号（提升 TokenVersion） |
+
+> **注**：**没有** `/api/auth/refresh`（T7：只发 Access Token）；
+> 也**没有**注册端点（T1）。
+
+### 7.3 待新增端点 `[已计划]`
+
+| 方法 | 路由 | 权限 | 说明 |
+|---|---|---|---|
+| POST | `/api/authors` | Admin | 创建作者（内容层）。T14b：作者管理页依赖它 |
+| PUT | `/api/authors/{id}` | Admin / 本人 | 已存在，但前端 `/me/profile` 页尚未接入 |
+| DELETE | `/api/authors/{id}` | Admin | 软删除作者。T14b |
 
 ### 7.4 乐观锁机制（核心约定）
 
@@ -1125,7 +1164,7 @@ sequenceDiagram
 | Infrastructure | 本地文件存储（白名单 + 体积限制 + 防穿越） |
 | Infrastructure | 慢查询拦截（>500ms） |
 | Infrastructure | 迁移 + `HasData` 种子 |
-| WebApi | 6 控制器 / 27 端点 |
+| WebApi | 9 控制器 / 45 端点 |
 | WebApi | 全局异常 → HTTP 状态码映射 |
 | WebApi | Serilog 请求日志 + 滚动文件 |
 | WebApi | CORS 策略 |
@@ -1142,12 +1181,12 @@ sequenceDiagram
 | 5 | 密码慢哈希实现 | **P0** | §6.4 |
 | 6 | 错误码补全 4003/4010/4030/4130 | P1 | E5/E6 |
 | 7 | ~~搜索改真 FTS~~ **已完成**（zhparser + 生成列 + GIN）。相关度排序待补 | P1 | T9 / §5.4 |
-| 8 | 专栏实体与 CRUD | P1 | business §4.8 |
-| 9 | **不计数只读详情端点**（修浏览量污染） | P1 | Q12 |
-| 10 | `Summary` 自动/覆盖逻辑（含 `IsSummaryAuto`） | P1 | Q5 |
-| 11 | 缓存 key 规范 + `v{版本}` 落地 | P1 | E8 / §4.2 |
-| 12 | 多实例无 Redis 启动期校验 | P1 | Q8 / §4.5 |
-| 13 | `Posts.AuthorId` 改可空（与 `SetNull` 对齐） | P1 | R10 |
+| 8 | ~~专栏实体与 CRUD~~ **已完成**（T15） | P1 | business §4.8 |
+| 9 | ~~不计数只读详情端点~~ **已完成**（`GET /api/posts/{id}/readonly`） | P1 | Q12 |
+| 10 | ~~`Summary` 自动/覆盖~~ **已完成**（应用层判定，不新增字段，T4） | P1 | Q5 |
+| 11 | ~~缓存 key 规范 + `v{版本}`~~ **已完成** | P1 | E8 / §4.2 |
+| 12 | ~~多实例无 Redis 启动期校验~~ **已完成**（`DeploymentGuard`，T5） | P1 | Q8 / §4.5 |
+| 13 | ~~`Posts.AuthorId` 改可空~~ **已完成**（R10） | P1 | R10 |
 | 14 | 限流补 PUT/DELETE 规则 | P1 | R13 |
 | 15 | 文件存储剥离 URL 构造（只存 key） | P1 | Q9 / §8.2 |
 | 16 | 数据库连接串与 JWT 密钥外置 | **P0** | R7 |
