@@ -75,6 +75,19 @@ ERROR:  text search configuration "chinese" does not exist
 
 ---
 
+## 1.2 本轮实现暴露的待办
+
+| # | 问题 | 状态 | 说明 |
+|---|---|---|---|
+| **T13** | 作者在编辑器里点「快速新建分类/标签」会被后端 **403** | ✅ **已修** | 采用选项①：`PostEditor` 用 `canManageTaxonomy`（isAdmin）隐藏该 UI，无标签时空状态改为「请联系管理员创建」。顺带给标签新建补了可见标签，与分类一致。若将来希望作者也能建分类，再评估选项② |
+| **T14a** | **账号管理页面** | ✅ **已完成** | `views/AdminUserListView.vue`：列表 / 新建（即作者账号创建入口）/ 行内编辑角色与关联作者与启用状态 / 重置密码 / 停用。**且不给自己显示「停用」**，避免自锁。T1 的「管理员创建作者账号」至此闭环 |
+| **T14b** | **作者管理页面（Author 内容层）** | `[计划中]` | 后端目前只有 `GET /api/authors` 与 `PUT /api/authors/{id}`，**没有创建/删除作者端点**，因此前端无法做完整的作者 CRUD。需要先补 `POST/DELETE /api/authors`。注意语义：Author 是内容（像 Category），不是账号 |
+| **T15** | 专栏只有数据模型与示例数据，没有 CRUD 端点与页面 | `[计划中]` | `Collections`/`PostCollections` 表、`ICollectionRepository`、文章关联（`collectionIds`）都已就绪；缺 `/api/collections` 的读接口（含「专栏详情 + 其文章列表」）与 `/admin/collections` 页面，以及前台 `/collections`、`/collections/:slug` |
+
+**建议顺序**：~~T13~~（已修）→ ~~T14a~~（已完成）→ **T15（专栏）** → T14b（作者 CRUD 需先补后端）→ T12（相关度排序）。
+
+---
+
 ## 2. 非阻塞的 TODO（依赖性能测试）
 
 以下为技术文档中标注 `TODO` 的位置，均为**原需求未给出量化标准**、不编造数字的项。

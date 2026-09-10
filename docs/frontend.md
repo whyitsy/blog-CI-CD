@@ -275,10 +275,10 @@ flowchart TB
 | 19 | `/admin/categories` | `AdminCategoryListView.vue` | 15 | `[已实现]` |
 | 20 | `/admin/tags` | `AdminTagListView.vue` | 15 | `[已实现]` |
 | 21 | `/admin/site` | `AdminSiteConfigView.vue` | 532 | `[已实现]` |
-| 22 | `/admin/profile` | `AdminProfileView.vue` | 341 | `[需调整]` 按新模型并入作者管理 |
-| 23 | `/admin/users` | — | — | `[已决定]` |
-| 24 | `/admin/authors` | — | — | `[已决定]` |
-| 25 | `/admin/collections` | — | — | `[已决定]` |
+| 22 | `/admin/users` | `AdminUserListView.vue` | 611 | `[已实现]` 账号管理（作者账号的唯一创建入口，T14a） |
+| 23 | `/admin/profile` | `AdminProfileView.vue` | 341 | `[已实现]` 博主资料（改名以区别于「账号」） |
+| 24 | `/admin/authors` | — | — | `[计划中]` 需先补后端创建/删除作者端点（T14b） |
+| 25 | `/admin/collections` | — | — | `[计划中]`（T15） |
 
 **错误页**
 

@@ -110,3 +110,31 @@
 - `Blog.WebApi.csproj` 已在构建前自动 `taskkill Blog.WebApi.exe`；若仍报 MSB3027 锁文件，手工再杀一次
 - `dotnet ef migrations remove` 不会回退模型快照，**不要依赖它来撤销未应用的迁移**；
   应 `git checkout -- BlogDbContextModelSnapshot.cs` + 手工删迁移文件，然后重新 add
+
+## 前端认证（2026-09-11 已实现）
+- 两套登录入口：`/login`（作者，POST /api/auth/author/login）、`/admin/login`（管理员，POST /api/auth/admin/login）
+  - 共用 `components/auth/LoginForm.vue`（mode 区分）；**无注册页**（T1）
+- `stores/auth.ts`：token/用户持久化 localStorage；`isAuthenticated`/`role`/`isAdmin`/`canWriteContent`；`restore()` 启动校验
+- `http.ts`：`configureHttp({getToken,onUnauthorized})` 由 `main.ts` 注入（避免 http 依赖 store/router 的循环引用）
+  - 注入 `Authorization: Bearer`；4010 → 清登录态并跳登录页（带 returnUrl），**已在登录页时不跳**以免冲掉错误提示
+- 路由守卫（`router/index.ts`）：`meta.requiresAuth` / `roles` / `guestOnly`
+  - 未登录访问 `/admin*` → `/admin/login?returnUrl=…`；访问 `/me*` → `/login?returnUrl=…`
+  - 角色不符 → 送回自己的地盘（Admin→/admin，Author→/me），不报错页
+- 三套布局：`DefaultLayout`（公开）、`AuthorLayout`（`/me/**`）、`AdminLayout`（`/admin/**`，仅 Admin）
+- 作者可自助发文：`/me/posts/new`、`/me/posts/:id/edit`（复用 `PostEditor`）
+- 管理端取 version 改用 `GET /api/posts/{id}/readonly`，不再污染浏览量
+- ⚠️ **归属校验只认 `CreatedByUserId`（账号维度），不能认 `AuthorId`**：
+  多个账号可关联同一 Author，用 AuthorId 判断会导致互相越权（已实测并修复）
+  - 草稿不可读返回 **404**（不暴露存在性），不是 403
+- ⚠️ 分类/标签写接口仅 Admin（T6）；`PostEditor` 用 `canManageTaxonomy` 对作者隐藏「快速新建」
+
+## 前端自动化验证手段（重要）
+- **CDP（Chrome DevTools Protocol）**：Node 22+ 内置全局 `WebSocket`，无需安装 puppeteer
+  - 必须用 **Windows 的 node.exe** 调用（WSL 访问不到 Windows 的 localhost:9222）
+  - 启动：`chrome.exe --headless=new --remote-debugging-port=9222 --user-data-dir=D:\tmpbuild\cdp-profile`
+  - 脚本模板在 `/mnt/d/tmpbuild/*.mjs`：先设置 localStorage 的 token 再 `Page.navigate`，
+    用 `Runtime.evaluate` 断言 `location.pathname` 与 `document.body.innerText`
+  - 截图用 `Page.captureScreenshot`（比 `--screenshot` 更可靠，可复用同一会话）
+- **测试脚本自身的坑**：`innerText` 不含 placeholder；无 `type` 的 input 不会被 `input[type=text]` 选中；
+  错用 `document.querySelectorAll('input[type=text]')` 会误判为「元素不存在」
+- **连字符与编码**：`docker exec pgsql psql -c "SELECT "Email" ..."` 需转义双引号（PG 标识符大小写敏感）
