@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { getAuthors, updateAuthor } from '@/api/authors'
+import { onMounted, reactive, ref } from 'vue'
+import { getMyAuthor, updateAuthor } from '@/api/authors'
 import { uploadFile } from '@/api/files'
-import FormSkeleton from '@/components/skeleton/FormSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
 import type { AuthorDto } from '@/types'
 
+const auth = useAuthStore()
 const site = useSiteStore()
 
 const author = ref<AuthorDto | null>(null)
@@ -14,48 +15,31 @@ const saving = ref(false)
 const uploading = ref(false)
 const errorMsg = ref('')
 const okMsg = ref('')
+/** 账号未关联作者时的专门提示（不是错误，是待管理员处理的状态） */
+const notLinked = ref(false)
 
-const form = reactive({
-  name: '',
-  email: '',
-  avatar: '',
-  bio: '',
-})
-
-/** 头像加载失败时退回首字母占位（历史数据里的 /media/xxx 已不再对外提供） */
+const form = reactive({ name: '', email: '', bio: '', avatar: '' })
 const avatarBroken = ref(false)
-
-const avatarPreview = computed(() => (!avatarBroken.value && form.avatar ? form.avatar : ''))
 
 function fill(a: AuthorDto) {
   form.name = a.name
   form.email = a.email
-  form.avatar = a.avatar
   form.bio = a.bio
+  form.avatar = a.avatar
   avatarBroken.value = false
 }
-
-/** 换上新地址后重新尝试加载 */
-watch(
-  () => form.avatar,
-  () => {
-    avatarBroken.value = false
-  },
-)
 
 async function load() {
   loading.value = true
   errorMsg.value = ''
+  notLinked.value = false
   try {
-    const authors = await getAuthors()
-    if (!authors.length) {
-      errorMsg.value = '后端还没有作者记录，请先在数据库中初始化博主资料'
-      return
-    }
-    // 当前无认证，单人博客：取首条作为博主
-    author.value = authors[0]
-    fill(authors[0])
+    const a = await getMyAuthor()
+    author.value = a
+    fill(a)
   } catch (e) {
+    // 后端在「账号未关联作者」时返回 404 并给出可操作提示
+    notLinked.value = true
     errorMsg.value = e instanceof Error ? e.message : '加载失败'
   } finally {
     loading.value = false
@@ -68,18 +52,17 @@ async function onPickAvatar(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-
   if (!file.type.startsWith('image/')) {
     errorMsg.value = '请选择图片文件'
     input.value = ''
     return
   }
-
   uploading.value = true
   errorMsg.value = ''
   try {
     form.avatar = await uploadFile(file)
-    okMsg.value = '头像上传成功，记得点击保存'
+    avatarBroken.value = false
+    okMsg.value = '头像上传成功，记得保存'
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '上传失败'
   } finally {
@@ -90,12 +73,8 @@ async function onPickAvatar(event: Event) {
 
 async function onSave() {
   if (!author.value) return
-  if (!form.name.trim()) {
-    errorMsg.value = '名称不能为空'
-    return
-  }
-  if (!form.email.trim()) {
-    errorMsg.value = '邮箱不能为空'
+  if (!form.name.trim() || !form.email.trim()) {
+    errorMsg.value = '姓名与邮箱不能为空'
     return
   }
 
@@ -106,15 +85,17 @@ async function onSave() {
     const updated = await updateAuthor(author.value.id, {
       name: form.name.trim(),
       email: form.email.trim(),
-      avatar: form.avatar,
       bio: form.bio,
+      avatar: form.avatar,
       version: author.value.version,
     })
     author.value = updated
     fill(updated)
     okMsg.value = '已保存'
-    // NavBar / Footer / 详情页作者信息来自 site store，保存后重新拉取
+    // 文章详情与首屏站点信息都缓存了作者信息，保存后刷新
     await site.refreshAll()
+    // 顺带刷新登录用户里的 authorName（顶栏显示用）
+    await auth.restore()
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '保存失败'
   } finally {
@@ -130,16 +111,33 @@ function onReset() {
 </script>
 
 <template>
-  <section class="admin-profile">
+  <section class="my-profile">
+    <header class="page-head">
+      <div>
+        <h1>个人资料</h1>
+        <p class="muted">这里的姓名与头像会显示在你发布的文章上</p>
+      </div>
+    </header>
+
     <p v-if="errorMsg" class="banner err">{{ errorMsg }}</p>
     <p v-if="okMsg" class="banner ok">{{ okMsg }}</p>
 
-    <FormSkeleton v-if="loading" :fields="3" />
+    <div v-if="loading" class="muted-block">加载中...</div>
 
-    <form v-else-if="author" class="profile-form card" @submit.prevent="onSave">
+    <!-- 账号未关联作者：给出明确指引，而不是让用户对着空表单猜 -->
+    <div v-else-if="notLinked" class="card panel unlinked">
+      <h3>账号未关联作者</h3>
+      <p>
+        你的登录账号（{{ auth.user?.email }}）还没有关联到任何作者。
+        作者是文章的署名对象，需要由管理员在「账号管理 → 编辑 → 关联作者」中为你指定。
+      </p>
+      <p class="muted">在关联之前，你可以正常写文章，但文章不会显示你的署名信息。</p>
+    </div>
+
+    <form v-else-if="author" class="card panel" @submit.prevent="onSave">
       <div class="avatar-row">
         <div class="avatar-box">
-          <img v-if="avatarPreview" :src="avatarPreview" alt="头像" @error="avatarBroken = true" />
+          <img v-if="form.avatar && !avatarBroken" :src="form.avatar" alt="头像" @error="avatarBroken = true" />
           <span v-else class="avatar-fallback">{{ form.name.slice(0, 1) || '?' }}</span>
         </div>
         <div class="avatar-actions">
@@ -147,24 +145,24 @@ function onReset() {
             {{ uploading ? '上传中...' : '上传头像' }}
             <input type="file" accept="image/*" hidden :disabled="uploading" @change="onPickAvatar" />
           </label>
-          <input v-model.trim="form.avatar" class="input" placeholder="或直接填写图片 URL" />
+          <input v-model.trim="form.avatar" class="input" placeholder="或填写图片 URL" />
           <span class="hint">支持 jpg / png / webp / gif / svg，单文件不超过 10MB</span>
         </div>
       </div>
 
       <label class="field">
-        <span class="label">名称</span>
-        <input v-model="form.name" class="input" maxlength="50" placeholder="展示在文章详情页的作者名" />
+        <span class="label">姓名</span>
+        <input v-model="form.name" class="input" maxlength="100" placeholder="展示在文章页的作者名" />
       </label>
 
       <label class="field">
-        <span class="label">邮箱</span>
-        <input v-model="form.email" class="input" type="email" maxlength="100" placeholder="用于 Gravatar 或联系展示" />
+        <span class="label">邮箱（仅展示/联系用）</span>
+        <input v-model="form.email" class="input" maxlength="100" placeholder="author@example.com" />
       </label>
 
       <label class="field">
         <span class="label">个人简介</span>
-        <textarea v-model="form.bio" class="input textarea" rows="4" maxlength="500" placeholder="一句话介绍自己" />
+        <textarea v-model="form.bio" class="input textarea" rows="4" maxlength="500" />
       </label>
 
       <footer class="form-actions">
@@ -178,15 +176,26 @@ function onReset() {
       </footer>
     </form>
 
-    <div v-else class="muted-block">暂无博主资料</div>
+    <div v-else class="muted-block">暂无作者资料</div>
   </section>
 </template>
 
 <style scoped>
-.admin-profile {
+.my-profile {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.page-head h1 {
+  font: var(--text-h3);
+  color: var(--text-strong);
+  margin: 0;
+}
+.muted {
+  color: var(--text-muted);
+  font: var(--text-caption);
+  margin: 4px 0 0;
 }
 
 .banner {
@@ -209,12 +218,24 @@ function onReset() {
   color: var(--text-muted);
 }
 
-.profile-form {
+.panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-6);
   max-width: 720px;
+}
+.panel h3 {
+  font: var(--text-h3);
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.unlinked p {
+  font: var(--text-body-sm);
+  color: var(--text-default);
+  line-height: 1.9;
+  margin: 0;
 }
 
 .avatar-row {
@@ -223,7 +244,6 @@ function onReset() {
   gap: var(--space-5);
   flex-wrap: wrap;
 }
-
 .avatar-box {
   width: 88px;
   height: 88px;
@@ -245,7 +265,6 @@ function onReset() {
   font-weight: 700;
   color: var(--brand-500);
 }
-
 .avatar-actions {
   display: flex;
   flex-direction: column;
@@ -266,6 +285,10 @@ function onReset() {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+.hint {
+  font: var(--text-caption);
+  color: var(--text-subtle);
+}
 
 .input {
   width: 100%;
@@ -276,7 +299,6 @@ function onReset() {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   outline: none;
-  transition: border-color var(--transition-fast);
 }
 .input:focus {
   border-color: var(--brand-500);
@@ -284,11 +306,6 @@ function onReset() {
 .textarea {
   resize: vertical;
   font-family: inherit;
-}
-
-.hint {
-  font: var(--text-caption);
-  color: var(--text-subtle);
 }
 
 .form-actions {
@@ -309,30 +326,26 @@ function onReset() {
   gap: var(--space-3);
 }
 
-.btn-primary,
-.btn-ghost {
+.btn-primary {
   padding: var(--space-2) var(--space-4);
+  border: none;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
-  transition: opacity var(--transition-fast), border-color var(--transition-fast);
-}
-.btn-primary {
-  border: none;
   color: #fff;
+  cursor: pointer;
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
 }
 .btn-ghost {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-default);
-}
-.btn-ghost:hover {
-  border-color: var(--border-strong);
+  cursor: pointer;
 }
 .btn-primary:disabled,
 .btn-ghost:disabled {

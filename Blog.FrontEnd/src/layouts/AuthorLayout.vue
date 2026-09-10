@@ -37,6 +37,13 @@ async function onLogout() {
           <RouterLink to="/me" class="nav-link" :class="{ active: route.name === 'my-posts' }">
             我的文章
           </RouterLink>
+          <RouterLink
+            to="/me/profile"
+            class="nav-link"
+            :class="{ active: route.name === 'my-profile' }"
+          >
+            个人资料
+          </RouterLink>
         </nav>
 
         <div class="bar-actions">

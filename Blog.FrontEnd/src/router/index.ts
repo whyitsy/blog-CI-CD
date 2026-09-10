@@ -55,6 +55,7 @@ const router = createRouter({
         { path: '', name: 'my-posts', component: () => import('@/views/me/MyPostListView.vue') },
         { path: 'posts/new', name: 'my-post-new', component: () => import('@/views/me/MyPostNewView.vue') },
         { path: 'posts/:id/edit', name: 'my-post-edit', component: () => import('@/views/me/MyPostEditView.vue') },
+        { path: 'profile', name: 'my-profile', component: () => import('@/views/me/MyProfileView.vue') },
       ],
     },
 
@@ -70,8 +71,11 @@ const router = createRouter({
         { path: 'categories', name: 'admin-categories', component: () => import('@/views/AdminCategoryListView.vue') },
         { path: 'tags', name: 'admin-tags', component: () => import('@/views/AdminTagListView.vue') },
         { path: 'users', name: 'admin-users', component: () => import('@/views/AdminUserListView.vue') },
+        { path: 'authors', name: 'admin-authors', component: () => import('@/views/AdminAuthorListView.vue') },
         { path: 'collections', name: 'admin-collections', component: () => import('@/views/AdminCollectionListView.vue') },
-        { path: 'profile', name: 'admin-profile', component: () => import('@/views/AdminProfileView.vue') },
+        // 旧的「博主资料」页与「作者管理」职责重叠（都是维护 Author），
+        // 现统一到作者管理，保留本路径做重定向，避免旧链接 404
+        { path: 'profile', redirect: { name: 'admin-authors' } },
         { path: 'site', name: 'admin-site', component: () => import('@/views/AdminSiteConfigView.vue') },
       ],
     },
