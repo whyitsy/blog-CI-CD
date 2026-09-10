@@ -51,6 +51,8 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['Author', 'Admin'] },
       children: [
         { path: '', name: 'my-posts', component: () => import('@/views/me/MyPostListView.vue') },
+        { path: 'posts/new', name: 'my-post-new', component: () => import('@/views/me/MyPostNewView.vue') },
+        { path: 'posts/:id/edit', name: 'my-post-edit', component: () => import('@/views/me/MyPostEditView.vue') },
       ],
     },
 

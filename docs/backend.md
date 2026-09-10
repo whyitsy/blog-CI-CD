@@ -797,18 +797,48 @@ sequenceDiagram
 
 **`SigningKey` 管理**：与数据库连接串同等级别的敏感信息，必须外置（R7）。
 
-### 6.3 授权策略
+### 6.3 授权策略（`[已实现]`）
 
-`[已决定]` 两档角色 + 资源归属校验：
+两档角色 + 资源归属校验：
 
 | 策略名 | 规则 | 用法 |
 |---|---|---|
-| `Admin` | `role == Admin` | `[Authorize(Policy = "Admin")]` |
-| `AuthorOrAdmin` | `role ∈ {Author, Admin}` | 发文、上传文件 |
-| 资源归属 | Author 仅能操作 `AuthorId == 自己` 的 Post | 在 Service 内校验，**不用**策略（需要读资源） |
+| `AdminOnly` | `role == Admin` | `[Authorize(Policy = "AdminOnly")]`，如 `/api/users` 全部端点 |
+| `ContentWriter` | `role ∈ {Author, Admin}` | 文章写操作、`/readonly`、文件上传 |
+| 资源归属 | **只认 `CreatedByUserId`**（见下方警告） | 在 Service 内校验（`EnsureCanManage`），**不能**靠策略 |
 
-> **重要**：资源归属校验**必须在 Service 层做**（因为要先查到实体才知道归属），
-> 不能仅靠 `[Authorize]`。这也是「越权访问他人草稿」的防线。
+> **必须放在 Service 层**：要先查到实体才知道归属，`[Authorize]` 只能判断角色。
+
+#### ⚠️ 归属校验只认 `CreatedByUserId`，不能认 `AuthorId`
+
+这是实现过程中**实测发现的真实越权漏洞**，记录下来避免回退：
+
+| | 说明 |
+|---|---|
+| 曾经的错误做法 | `post.CreatedByUserId == me \|\| post.AuthorId == myAuthorId` |
+| 为什么错 | `Author` 是**内容层的署名对象**（见 [tech.md](./tech.md) §2.2）。管理员完全可能把**多个账号**关联到同一个 `Author`（同一人开两个账号、或图省事复用）。此时这些账号之间就能互相改/删对方的文章 |
+| 实测后果 | 作者2 成功修改了作者1 的文章（返回 200），而非 403 |
+| 正确做法 | **只比较 `CreatedByUserId`（账号维度）**；`AuthorId` 只用于「署名展示」，不承担归属语义 |
+| 附带影响 | 历史数据（`CreatedByUserId` 为 NULL）此后**只有管理员可改** —— 这是安全的默认值 |
+
+代码位置：`PostService.EnsureCanManage`、`PostService.CanReadUnpublished`（`Blog.Application/Services/Post/PostService.cs`）。
+
+#### 草稿不可读时返回 404 而不是 403
+
+`CanReadUnpublished` 判定不通过时抛 `NotFound`（4040）而非 `Forbidden`（4030）。
+**理由**：403 等于告诉攻击者「这篇文章存在，只是你没权限」，
+可以据此探测草稿的存在与数量。用 404 统一表现为「不存在」，不泄露存在性。
+
+#### 实测验证结果
+
+| 场景 | 结果 |
+|---|---|
+| 作者2 改 / 删 作者1 的文章 | **403 / 4030** |
+| 作者2 读 作者1 的草稿 | **404 / 4040** |
+| 作者1 读写自己的文章 | 200 / 0 |
+| 管理员改他人文章 | 200 / 0 |
+| 作者 `?includeUnpublished=true` | 只见自己创建的（数据级过滤） |
+| 管理员 `?includeUnpublished=true` | 见全部 |
 
 ### 6.4 密码存储（`[已决定]` 需慢哈希）
 

@@ -608,7 +608,7 @@ stateDiagram-v2
 | 我的文章（含草稿箱） | `/me` |
 | 写文章 | `/me/posts/new` |
 | 编辑我的文章 | `/me/posts/:id/edit` |
-| 个人资料 | `/me/profile` |
+| 个人资料 | `/me/profile` `[计划中]`（后端 `PUT /api/authors/{id}` 已就绪） |
 
 > **没有注册页**（T1）。账号由管理员在 `/admin/users` 创建后，把邮箱与初始密码告知作者。
 

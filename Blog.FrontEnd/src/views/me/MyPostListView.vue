@@ -105,7 +105,7 @@ function canNext() {
           <input v-model="onlyDrafts" type="checkbox" />
           <span>只看草稿</span>
         </label>
-        <RouterLink to="/admin/posts/new" class="btn-primary">+ 写文章</RouterLink>
+        <RouterLink to="/me/posts/new" class="btn-primary">+ 写文章</RouterLink>
       </div>
     </header>
 
@@ -131,7 +131,7 @@ function canNext() {
         </span>
         <span class="muted">{{ fmtDate(p.publishedAt) || '未发布' }}</span>
         <span class="right actions">
-          <RouterLink class="link" :to="`/admin/posts/${p.id}/edit`">编辑</RouterLink>
+          <RouterLink class="link" :to="`/me/posts/${p.id}/edit`">编辑</RouterLink>
           <button class="link" :disabled="busyId === p.id" @click="togglePublish(p)">
             {{ p.publishedAt ? '下架' : '发布' }}
           </button>
@@ -142,7 +142,7 @@ function canNext() {
 
     <div v-else class="muted-block">
       <p>{{ onlyDrafts ? '没有草稿' : '你还没有写过文章' }}</p>
-      <RouterLink to="/admin/posts/new" class="btn-primary">写第一篇</RouterLink>
+      <RouterLink to="/me/posts/new" class="btn-primary">写第一篇</RouterLink>
     </div>
 
     <nav v-if="totalPages > 1" class="pager">
