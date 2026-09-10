@@ -82,7 +82,7 @@ onMounted(() => {
       <div class="aurora-blobs" />
       <p class="eyebrow">POSTS</p>
       <h1 class="page-title gradient-text">{{ headerTitle }}</h1>
-      <p v-if="result" class="page-sub">共 {{ result.totalCount }} 篇文章</p>
+      <p v-if="result" class="page-sub">共 {{ result.total }} 篇文章</p>
     </header>
 
     <div class="container list-container">

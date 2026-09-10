@@ -40,7 +40,7 @@ const emit = defineEmits<{ (e: 'page-change', page: number): void }>()
       <PaginationBar
         :page="result.page"
         :total-pages="result.totalPages"
-        :total-count="result.totalCount"
+        :total-count="result.total"
         @change="emit('page-change', $event)"
       />
     </template>

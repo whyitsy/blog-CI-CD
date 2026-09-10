@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PostEditor from '@/components/admin/PostEditor.vue'
 import { getPostDetail, updatePost } from '@/api/posts'
@@ -12,6 +12,8 @@ const post = ref<PostDetailDto | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
+
+const postId = computed(() => String(route.params.id ?? ''))
 
 async function load(id: string) {
   loading.value = true
@@ -27,23 +29,20 @@ async function load(id: string) {
 }
 
 watch(
-  () => route.params.id,
-  (id) => id && load(String(id)),
+  postId,
+  (id) => {
+    if (id) load(id)
+  },
   { immediate: true },
 )
-
-onMounted(() => {
-  if (route.params.id) load(String(route.params.id))
-})
 
 async function onSave(payload: PostPayload) {
   if (!post.value) return
   saving.value = true
   errorMsg.value = ''
   try {
-    const updated = await updatePost(post.value.id, payload)
-    post.value = updated
-    router.push(`/post/${updated.id}`)
+    await updatePost(post.value.id, payload)
+    router.push('/admin')
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '保存失败'
   } finally {
@@ -57,10 +56,7 @@ function onCancel() {
 </script>
 
 <template>
-  <section class="admin-edit container">
-    <header class="page-header">
-      <button class="link" @click="router.push('/admin')">← 返回列表</button>
-    </header>
+  <section class="admin-edit">
     <p v-if="errorMsg" class="err-banner">{{ errorMsg }}</p>
     <div v-if="loading" class="loading">加载中...</div>
     <PostEditor
@@ -76,27 +72,15 @@ function onCancel() {
 
 <style scoped>
 .admin-edit {
-  padding: var(--space-8) var(--space-4) var(--space-16);
-}
-.page-header {
   max-width: 880px;
-  margin: 0 auto var(--space-3);
-}
-.link {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--brand-500);
-  cursor: pointer;
-  font: var(--text-body-sm);
 }
 .err-banner {
-  max-width: 880px;
-  margin: 0 auto var(--space-4);
+  margin-bottom: var(--space-4);
   background: color-mix(in srgb, #e35151 12%, transparent);
   color: #e35151;
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
+  font: var(--text-body-sm);
 }
 .loading {
   text-align: center;

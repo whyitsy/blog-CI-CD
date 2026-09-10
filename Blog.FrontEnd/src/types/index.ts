@@ -8,7 +8,8 @@ export interface ApiResponse<T> {
 
 export interface PagedResult<T> {
   items: T[]
-  totalCount: number
+  /** 后端 PagedResult.Total -> total */
+  total: number
   page: number
   pageSize: number
   totalPages: number
@@ -38,7 +39,6 @@ export interface PostListItemDto {
   tags: TagDto[]
   publishedAt: string | null
   viewCount: number
-  wordCount: number
 }
 
 export interface PostDetailDto {

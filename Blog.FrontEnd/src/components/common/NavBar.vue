@@ -17,15 +17,25 @@ const onScroll = () => {
 onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }))
 onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 
-const navItems = [
+interface NavItem {
+  name: string
+  label: string
+  to: string
+  /** 有子路由的入口（如 /admin/*）需要前缀匹配 */
+  prefix?: boolean
+}
+
+const navItems: NavItem[] = [
   { name: 'home', label: '首页', to: '/' },
   { name: 'tags', label: '标签', to: '/tags' },
   { name: 'categories', label: '分类', to: '/categories' },
   { name: 'archive', label: '归档', to: '/archive' },
-  { name: 'admin-posts', label: '管理', to: '/admin' },
+  // 管理端是独立布局（含子路由），用前缀匹配保持高亮
+  { name: 'admin', label: '管理', to: '/admin', prefix: true },
 ]
 
-const isActive = (name: string) => route.name === name
+const isActive = (item: NavItem) =>
+  item.prefix ? route.path === item.to || route.path.startsWith(`${item.to}/`) : route.name === item.name
 </script>
 
 <template>
@@ -42,7 +52,7 @@ const isActive = (name: string) => route.name === name
           :key="item.name"
           :to="item.to"
           class="nav-link"
-          :class="{ active: isActive(item.name) }"
+          :class="{ active: isActive(item) }"
         >
           {{ item.label }}
         </RouterLink>
