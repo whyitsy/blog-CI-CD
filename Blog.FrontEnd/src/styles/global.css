@@ -107,6 +107,12 @@ ol {
     border-color var(--transition-normal);
 }
 
+/* ---------- 徽章：标签 与 分类 ----------
+   两者刻意做成**一眼可区分**的形态（E13）：
+     · 标签 = 细边框圆角小标签，青色系
+     · 分类 = 实心渐变方块标签，洋红→紫系
+   均为全局类，不组件化（分类/标签不单独建组件，见 docs/tech.md §八 E13）。 */
+
 /* 标签徽章 */
 .tag-badge {
   display: inline-flex;
@@ -119,6 +125,24 @@ ol {
   border: 1px solid color-mix(in srgb, var(--brand-500) 35%, transparent);
   border-radius: var(--radius-xs);
   white-space: nowrap;
+}
+
+/* 分类徽章（实心渐变，与标签形成对比） */
+.category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-3);
+  font: var(--text-caption);
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--gradient-mid), var(--gradient-end));
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+/* 可点击的分类徽章（用于卡片/列表里跳转到该分类的筛选页） */
+a.category-badge:hover {
+  filter: brightness(1.12);
 }
 
 /* 极光光斑背景（Hero/页头共用） */

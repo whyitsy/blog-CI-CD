@@ -263,14 +263,7 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
   margin-bottom: var(--space-4);
 }
 
-.category-badge {
-  padding: 3px var(--space-3);
-  font: var(--text-caption);
-  font-weight: 600;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-mid), var(--gradient-end));
-  border-radius: var(--radius-xs);
-}
+/* .category-badge 已提升为全局样式（src/styles/global.css），便于卡片/列表复用 */
 
 .post-title {
   font: var(--text-h1);

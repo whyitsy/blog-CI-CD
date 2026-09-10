@@ -20,7 +20,15 @@ const publishDate = computed(() => {
     <div class="cover">
       <img v-if="post.coverImage" :src="post.coverImage" :alt="post.title" loading="lazy" />
       <div v-else class="cover-placeholder" />
-      <span v-if="post.categoryName" class="cover-category">{{ post.categoryName }}</span>
+      <!-- 分类：可点击，跳到该分类的筛选列表（用全局 .category-badge 与标签徽章区分） -->
+      <RouterLink
+        v-if="post.categoryId"
+        :to="{ path: '/posts', query: { categoryId: post.categoryId } }"
+        class="cover-category category-badge"
+        @click.stop
+      >
+        {{ post.categoryName }}
+      </RouterLink>
     </div>
 
     <div class="card-body">
@@ -83,16 +91,15 @@ const publishDate = computed(() => {
   opacity: 0.85;
 }
 
+/* 只负责「钉在封面左上角」的定位；
+   视觉（渐变底色/圆角/字号）全部交给全局 .category-badge。
+   注意：不要在这里再写 background/color，否则会覆盖全局样式
+   （scoped 选择器带 data-v 属性，优先级高于全局类）。 */
 .cover-category {
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
-  padding: 3px var(--space-2);
-  font: var(--text-caption);
-  color: #fff;
-  background: rgba(19, 20, 26, 0.55);
-  backdrop-filter: blur(6px);
-  border-radius: var(--radius-xs);
+  z-index: 2;
 }
 
 .card-body {
