@@ -144,6 +144,15 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
             >
               {{ tag.name }}
             </RouterLink>
+            <!-- 所属专栏：指向专栏详情页（一篇文章可属于多个专栏，T2） -->
+            <RouterLink
+              v-for="col in post.collections ?? []"
+              :key="col.id"
+              :to="`/collections/${col.slug}`"
+              class="collection-badge"
+            >
+              📚 {{ col.title }}
+            </RouterLink>
           </div>
           <h1 class="post-title">{{ post.title }}</h1>
           <div class="post-meta">
@@ -260,6 +269,25 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
 }
 
 /* .category-badge 已提升为全局样式（src/styles/global.css），便于卡片/列表复用 */
+
+/* 专栏徽章：虚线边框 + 图标前缀，与分类（实心渐变）、标签（实线细边框）三者可区分 */
+.collection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--space-3);
+  font: var(--text-caption);
+  font-weight: 600;
+  color: var(--text-default);
+  background: var(--bg-raised);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.collection-badge:hover {
+  color: var(--brand-500);
+  border-color: var(--brand-500);
+}
 
 .post-title {
   font: var(--text-h1);

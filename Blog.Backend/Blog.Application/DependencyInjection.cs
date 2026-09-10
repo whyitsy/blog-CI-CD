@@ -1,6 +1,7 @@
 ﻿using Blog.Application.Services.Auth;
 using Blog.Application.Services.Author;
 using Blog.Application.Services.Category;
+using Blog.Application.Services.Collection;
 using Blog.Application.Services.Post;
 using Blog.Application.Services.Site;
 using Blog.Application.Services.Tag;
@@ -19,6 +20,7 @@ namespace Blog.Application
             services.AddScoped<IAuthorService, AuthorService>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<ICollectionService, CollectionService>();
 
             return services;
         }

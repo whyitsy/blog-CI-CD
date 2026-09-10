@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { createCategory, getCategories } from '@/api/categories'
 import { createTag, getTags } from '@/api/tags'
+import { getCollections } from '@/api/collections'
 import { useAuthStore } from '@/stores/auth'
-import type { CategoryDto, PostDetailDto, PostPayload, TagDto } from '@/types'
+import type { CategoryDto, CollectionDto, PostDetailDto, PostPayload, TagDto } from '@/types'
 
 /** 编辑器 props：
  *  - initial: 编辑模式下传入的 PostDetailDto；
@@ -26,6 +27,7 @@ const content = ref('')
 const coverImage = ref('')
 const categoryId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
+const selectedCollectionIds = ref<string[]>([])
 const publish = ref(true)
 
 const auth = useAuthStore()
@@ -39,6 +41,7 @@ const canManageTaxonomy = computed(() => auth.isAdmin)
 
 const categories = ref<CategoryDto[]>([])
 const tags = ref<TagDto[]>([])
+const collections = ref<CollectionDto[]>([])
 
 // 内联新建分类/标签
 const newCategoryName = ref('')
@@ -56,6 +59,7 @@ function syncFromInitial() {
     coverImage.value = ''
     categoryId.value = null
     selectedTagIds.value = []
+    selectedCollectionIds.value = []
     publish.value = true
     return
   }
@@ -65,14 +69,18 @@ function syncFromInitial() {
   coverImage.value = props.initial.coverImage
   categoryId.value = props.initial.categoryId
   selectedTagIds.value = props.initial.tags.map((t) => t.id)
+  // 一篇文章可属于多个专栏（T2）
+  selectedCollectionIds.value = (props.initial.collections ?? []).map((c) => c.id)
 }
 
 watch(() => props.initial, syncFromInitial, { immediate: false })
 
 async function loadTaxonomy() {
-  const [cs, ts] = await Promise.all([getCategories(), getTags()])
+  // 专栏用 includeUnpublished=true：管理端/作者需要把文章挂到未发布专栏上
+  const [cs, ts, cols] = await Promise.all([getCategories(), getTags(), getCollections(true).catch(() => [])])
   categories.value = cs
   tags.value = ts
+  collections.value = cols
 }
 
 onMounted(() => {
@@ -129,6 +137,14 @@ function toggleTag(id: string) {
   }
 }
 
+function toggleCollection(id: string) {
+  if (selectedCollectionIds.value.includes(id)) {
+    selectedCollectionIds.value = selectedCollectionIds.value.filter((c) => c !== id)
+  } else {
+    selectedCollectionIds.value = [...selectedCollectionIds.value, id]
+  }
+}
+
 function submit() {
   if (!formValid.value) return
   const payload: PostPayload = {
@@ -138,6 +154,7 @@ function submit() {
     coverImage: coverImage.value.trim(),
     categoryId: categoryId.value,
     tagIds: [...selectedTagIds.value],
+    collectionIds: [...selectedCollectionIds.value],
     publish: props.mode === 'create' ? publish.value : undefined,
     version: props.initial?.version,
   }
@@ -211,6 +228,26 @@ function submit() {
         <span class="inline-add-label">快速新建标签</span>
         <input v-model="newTagName" type="text" placeholder="新标签名" @keyup.enter="addTag" />
         <button type="button" class="btn-mini" :disabled="!newTagName.trim()" @click="addTag">添加</button>
+      </div>
+    </div>
+
+    <!-- 专栏（多选）：一篇文章可属于多个专栏（T2）。专栏是内容组织者，作者也可挂载 -->
+    <div class="field">
+      <span class="field-label">所属专栏（可多选）</span>
+      <div class="tag-pool">
+        <button
+          v-for="c in collections"
+          :key="c.id"
+          type="button"
+          class="tag-chip"
+          :class="{ active: selectedCollectionIds.includes(c.id) }"
+          @click="toggleCollection(c.id)"
+        >
+          {{ c.title }}
+        </button>
+        <span v-if="!collections.length" class="empty">
+          还没有专栏，请管理员在「专栏管理」中创建
+        </span>
       </div>
     </div>
 

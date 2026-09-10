@@ -50,9 +50,13 @@ export interface PostDetailDto {
   categoryId: string | null
   categoryName: string | null
   tags: TagDto[]
+  /** 所属专栏（一篇文章可属于多个），按专栏内排序 */
+  collections: CollectionBriefDto[]
   authorId: string
   authorName: string
   authorAvatar: string
+  /** 创建者账号 id（归属校验用，后端已返回） */
+  createdByUserId: string | null
   publishedAt: string | null
   updatedAt: string | null
   viewCount: number
@@ -160,10 +164,13 @@ export interface PostQuery {
 export interface PostPayload {
   title: string
   content: string
+  /** 留空则后端自动取正文前 50 字；填写则以填写内容为准（T4） */
   summary: string
   coverImage: string
   categoryId: string | null
   tagIds: string[]
+  /** 所属专栏 id 集合（T2 多对多）；不传表示不改动关联 */
+  collectionIds: string[]
   /** 创建时可指定是否立即发布；更新时未使用，发布/下架走单独接口 */
   publish?: boolean
   /** 更新时必须携带版本号（由 PostDetailDto.version 提供），创建时可省略 */
@@ -205,4 +212,56 @@ export interface LoginResponse {
   expiresAt: string
   role: UserRole
   user: AuthUser
+}
+
+/* ------------------------------------------------------------------ 专栏 */
+/**
+ * 专栏：把多篇文章组织成一个系列。
+ * 与分类的区别：分类是单值归类（一篇文章一个分类），专栏是系列组织，
+ * 且**一篇文章可属于多个专栏**（T2 决策，多对多）。
+ */
+/** 文章详情里回带的专栏简要信息 */
+export interface CollectionBriefDto {
+  id: string
+  title: string
+  slug: string
+}
+
+export interface CollectionDto {
+  id: string
+  title: string
+  slug: string
+  description: string
+  coverImage: string
+  sortOrder: number
+  isPublished: boolean
+  /** 只统计已发布文章 */
+  postCount: number
+  version: number
+}
+
+/** 专栏内的文章条目（按专栏内 SortOrder） */
+export interface CollectionPostItemDto {
+  id: string
+  title: string
+  summary: string
+  coverImage: string
+  publishedAt: string | null
+  viewCount: number
+  sortOrder: number
+}
+
+export interface CollectionDetailDto extends CollectionDto {
+  posts: CollectionPostItemDto[]
+}
+
+export interface CollectionPayload {
+  title: string
+  slug: string
+  description: string
+  coverImage: string
+  sortOrder: number
+  isPublished: boolean
+  /** 更新时必须携带（乐观锁） */
+  version?: number
 }

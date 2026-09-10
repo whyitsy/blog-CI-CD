@@ -20,6 +20,13 @@ namespace Blog.Infrastructure.Persistence.Repositories
                 .ToListAsync(cancellationToken);
         }
 
+        public async Task<Collection?> GetWithPostsAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _context.Collections
+                .Include(c => c.PostLinks)
+                .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        }
+
         public async Task<bool> ExistsBySlugAsync(string slug, Guid? excludeId = null, CancellationToken cancellationToken = default)
         {
             var normalized = slug.Trim().ToLowerInvariant();

@@ -32,6 +32,7 @@ interface AdminNavItem {
 const navItems: AdminNavItem[] = [
   { to: '/admin', label: '文章管理', icon: 'M4 5h16M4 12h16M4 19h10', prefix: true },
   { to: '/admin/categories', label: '分类管理', icon: 'M4 6h6v6H4zM14 6h6v6h-6zM4 16h6v4H4zM14 16h6v4h-6z' },
+  { to: '/admin/collections', label: '专栏管理', icon: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z' },
   { to: '/admin/tags', label: '标签管理', icon: 'M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a1 1 0 0 1 0 1.4ZM7.5 7.5h.01' },
   { to: '/admin/users', label: '账号管理', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm14 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
   { to: '/admin/profile', label: '博主资料', icon: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z' },

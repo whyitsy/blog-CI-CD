@@ -40,6 +40,7 @@ namespace Blog.Infrastructure
             services.AddScoped<ICategoryQueryRepository, TaxonomyQueryRepository>();
             services.AddScoped<ITagQueryRepository, TaxonomyQueryRepository>();
             services.AddScoped<ISiteQueryRepository, SiteQueryRepository>();
+            services.AddScoped<ICollectionQueryRepository, CollectionQueryRepository>();
 
             // 缓存：Cache:Enabled 总开关 + Cache:Provider 选择 Memory / Redis
             services.Configure<CacheOptions>(configuration.GetSection(CacheOptions.SectionName));

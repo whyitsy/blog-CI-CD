@@ -52,9 +52,13 @@ export function createPost(payload: PostPayload): Promise<PostDetailDto> {
   return post<PostDetailDto>('/api/posts', {
     title: payload.title,
     content: payload.content,
+    // 摘要留空时后端自动取正文前 50 字（T4：作者填写则以填写为准）
+    summary: payload.summary || null,
     coverImage: payload.coverImage || '',
     categoryId: payload.categoryId,
     tagIds: payload.tagIds,
+    collectionIds: payload.collectionIds ?? [],
+    authorId: null,
     publish: payload.publish ?? true,
   })
 }
@@ -65,9 +69,11 @@ export function updatePost(id: string, payload: PostPayload): Promise<PostDetail
   return put<PostDetailDto>(`/api/posts/${id}`, {
     title: payload.title,
     content: payload.content,
+    summary: payload.summary || null,
     coverImage: payload.coverImage || '',
     categoryId: payload.categoryId,
     tagIds: payload.tagIds,
+    collectionIds: payload.collectionIds ?? [],
     version: payload.version,
   })
 }

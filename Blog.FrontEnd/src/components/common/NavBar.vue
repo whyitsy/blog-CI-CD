@@ -29,6 +29,7 @@ const navItems: NavItem[] = [
   { name: 'home', label: '首页', to: '/' },
   { name: 'tags', label: '标签', to: '/tags' },
   { name: 'categories', label: '分类', to: '/categories' },
+  { name: 'collections', label: '专栏', to: '/collections' },
   { name: 'archive', label: '归档', to: '/archive' },
   // 管理端是独立布局（含子路由），用前缀匹配保持高亮
   { name: 'admin', label: '管理', to: '/admin', prefix: true },

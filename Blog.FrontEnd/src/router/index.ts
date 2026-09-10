@@ -27,6 +27,8 @@ const router = createRouter({
         { path: 'categories', name: 'categories', component: () => import('@/views/CategoriesView.vue') },
         { path: 'archive', name: 'archive', component: () => import('@/views/ArchiveView.vue') },
         { path: 'posts', name: 'post-list', component: () => import('@/views/PostListView.vue') },
+        { path: 'collections', name: 'collections', component: () => import('@/views/CollectionListView.vue') },
+        { path: 'collections/:slug', name: 'collection-detail', component: () => import('@/views/CollectionDetailView.vue') },
       ],
     },
 
@@ -68,6 +70,7 @@ const router = createRouter({
         { path: 'categories', name: 'admin-categories', component: () => import('@/views/AdminCategoryListView.vue') },
         { path: 'tags', name: 'admin-tags', component: () => import('@/views/AdminTagListView.vue') },
         { path: 'users', name: 'admin-users', component: () => import('@/views/AdminUserListView.vue') },
+        { path: 'collections', name: 'admin-collections', component: () => import('@/views/AdminCollectionListView.vue') },
         { path: 'profile', name: 'admin-profile', component: () => import('@/views/AdminProfileView.vue') },
         { path: 'site', name: 'admin-site', component: () => import('@/views/AdminSiteConfigView.vue') },
       ],
