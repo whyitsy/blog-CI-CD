@@ -171,3 +171,14 @@
   → 必须用 `ICollectionRepository.GetWithPostsAsync`（`Include(c => c.PostLinks)`）
 - 前端已与后端能力对齐：`PostDetailDto` 补 `collections`/`createdByUserId`；
   `PostPayload` 补 `collectionIds`；create/update 补 `summary`（此前编辑器有摘要框但不提交）
+
+## 作者管理（2026-09-11 已实现，T14b）
+- **语义分工**（重要）：`Author` 是**内容层署名对象**（与 Post/Tag/Category 同层），`User` 才是登录账号
+  - `/admin/users` 账号管理：邮箱/密码/角色/关联作者
+  - `/admin/authors` 作者管理：姓名/头像/简介（署名信息）
+  - `/me/profile` 作者个人资料：作者改自己的署名
+  - `/admin/profile` 已废弃（与作者管理重叠），改为重定向
+- 后端 `AuthorsController`（6 端点）：GET 列表/单个/`me`、POST、PUT、DELETE
+  - POST/DELETE 仅 Admin；PUT 管理员可改任何人、**作者只能改自己**（按 `ICurrentUser.AuthorId` 判定）
+  - `GET /api/authors/me`：账号未关联作者时返回 404 + 可操作提示
+  - 删除作者是软删除，其署名文章 `AuthorId` 由 **SetNull** 置空、**文章保留**

@@ -207,7 +207,7 @@ flowchart TB
   ME --> M1["'' → MyPostsView 我的文章/草稿箱<br/>[已决定]"]
   ME --> M2["posts/new → MyPostNewView<br/>[已决定]"]
   ME --> M3["posts/:id/edit → MyPostEditView<br/>[已决定]"]
-  ME --> M4["profile → MyProfileView<br/>[已决定]"]
+  ME --> M4["profile → MyProfileView<br/>[已实现]"]
 
   ADM --> D1["'' → AdminPostListView 全部文章"]
   ADM --> D2["posts/new → AdminPostNewView"]
@@ -216,7 +216,7 @@ flowchart TB
   ADM --> D5["tags → AdminTagListView"]
   ADM --> D6["site → AdminSiteConfigView"]
   ADM --> D7["users → AdminUserListView<br/>[已决定]"]
-  ADM --> D8["authors → AdminAuthorListView<br/>[已决定]"]
+  ADM --> D8["authors → AdminAuthorListView<br/>[已实现]"]
   ADM --> D9["collections → AdminCollectionListView<br/>[已实现] 含编排面板"]
 
   R --> NF["/:pathMatch(.*)* → NotFoundView<br/>[已决定] 现为 redirect '/'"]
@@ -255,7 +255,7 @@ flowchart TB
 | 12 | `/me` | 我的文章 + 草稿筛选 + 发布/下架/删除 | `[已实现]` |
 | 13 | `/me/posts/new` | 写文章（复用 `PostEditor`） | `[已实现]` |
 | 14 | `/me/posts/:id/edit` | 编辑我的文章（走 `/readonly` + 归属校验） | `[已实现]` |
-| 15 | `/me/profile` | 个人资料 | `[计划中]`（后端 `PUT /api/authors/{id}` 已就绪） |
+| 15 | `/me/profile` | 个人资料（改自己的署名信息） | `[已实现]` |
 
 > **作者与管理员各有一套编辑器路由**（`/me/posts/*` 与 `/admin/posts/*`），
 > 复用同一个 `PostEditor` 组件，只是保存成功后跳向不同列表、路由守卫要求的角色不同。
@@ -276,8 +276,8 @@ flowchart TB
 | 20 | `/admin/tags` | `AdminTagListView.vue` | 15 | `[已实现]` |
 | 21 | `/admin/site` | `AdminSiteConfigView.vue` | 532 | `[已实现]` |
 | 22 | `/admin/users` | `AdminUserListView.vue` | 611 | `[已实现]` 账号管理（作者账号的唯一创建入口，T14a） |
-| 23 | `/admin/profile` | `AdminProfileView.vue` | 341 | `[已实现]` 博主资料（改名以区别于「账号」） |
-| 24 | `/admin/authors` | — | — | `[计划中]` 需先补后端创建/删除作者端点（T14b） |
+| 23 | `/admin/profile` | 重定向到 `/admin/authors` | — | `[已废弃]` 与作者管理职责重叠，已合并 |
+| 24 | `/admin/authors` | `AdminAuthorListView.vue` | 544 | `[已实现]` 作者管理（内容层署名；含头像上传） |
 | 25 | `/admin/collections` | `AdminCollectionListView.vue` | 683 | `[已实现]` 专栏管理（含**文章编排面板**） |
 
 **错误页**
@@ -619,14 +619,14 @@ flowchart LR
 | `AuthorLoginView` | `[已决定]` `POST /api/auth/author/login` |
 | `AdminLoginView` | `[已决定]` `POST /api/auth/admin/login` |
 | `MyPostsView` | `[已决定]` `GET /api/posts?includeUnpublished=true&mine=true` |
-| `MyProfileView` | `[已决定]` `GET /api/authors/{me}` + `PUT /api/authors/{id}` |
+| `MyProfileView` | `[已实现]` `GET /api/authors/me` + `PUT /api/authors/{id}` |
 | `AdminPostListView` | `GET /api/posts?includeUnpublished=true`；操作前 `GET /api/posts/{id}` 取 version；`POST .../publish`；`DELETE ...?version=` |
 | `AdminPostNewView` / `EditView` | `POST /api/posts` / `PUT /api/posts/{id}` |
 | `AdminCategoryListView` / `TagListView` | 对应 CRUD（经 `TaxonomyManager` 注入） |
 | `AdminProfileView` | `GET /api/authors`、`PUT /api/authors/{id}`、`POST /api/files/upload` |
 | `AdminSiteConfigView` | `GET/PUT /api/site/config`、`GET/PUT/DELETE /api/site/social-links`、`POST /api/files/upload` |
 | `AdminUserListView` | `[已决定]` `/api/users` CRUD |
-| `AdminAuthorListView` | `[已决定]` `/api/authors` CRUD |
+| `AdminAuthorListView` | `[已实现]` `/api/authors` CRUD |
 | `AdminCollectionListView` | `[已实现]` `/api/collections` CRUD + `PUT /{id}/posts` 编排 |
 
 ### 7.3 一次受保护写操作的完整往返

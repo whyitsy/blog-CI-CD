@@ -882,20 +882,20 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 - 写操作并发控制：请求体带 `version`（int）
 - **认证**：受保护端点要求 `Authorization: Bearer <token>`
 
-### 7.2 现有端点 `[已实现]`（45 个）
+### 7.2 现有端点 `[已实现]`（48 个）
 
 | 控制器 | 行数 | 端点数 | 认证要求 |
 |---|---|---|---|
-| `PostsController` | 106 | 9 | 读公开；写 `ContentWriter`；`/readonly` 需登录 |
+| `PostsController` | 140 | 9 | 读公开；写 `ContentWriter`；`/readonly` 需登录 |
 | `SiteController` | 68 | 6 | 读公开（social-links 管理端需 Admin）；写 `Admin` |
 | `CategoriesController` | 48 | 4 | 读公开；写 `Admin` |
 | `TagsController` | 48 | 4 | 读公开；写 `Admin` |
-| `AuthorsController` | 44 | 3 | 读公开；写本人或 `Admin` |
+| `AuthorsController` | 110 | 6 | 读公开；创建/删除 `Admin`；更新本人或 `Admin` |
 | `FilesController` | 62 | 2 | 上传 `ContentWriter`；读取公开 |
 | `CollectionsController` | 115 | 7 | 读公开（未发布需 Admin）；写 `Admin` |
 | `AuthController` | 66 | 4 | 登录匿名；me/logout 需登录 |
 | `UsersController` | 76 | 6 | **整个控制器仅 `Admin`** |
-| **合计** | **667** | **45** | |
+| **合计** | **733** | **48** | |
 
 **Posts**（`Controllers/PostsController.cs`）：
 
@@ -928,13 +928,19 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 | `CategoriesController` | 21 | 28 | 35 | 42 |
 | `TagsController` | 20 | 27 | 34 | 41 |
 
-**Authors**（`Controllers/AuthorsController.cs`）：
+**Authors**（`Controllers/AuthorsController.cs`，T14b 已补全 CRUD）：
 
-| 方法 | 路由 | 特性行 | 实现行 |
+| 方法 | 路由 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/api/authors` | 20 | 21-26 |
-| GET | `/api/authors/{id:guid}` | 28 | 29-36 |
-| PUT | `/api/authors/{id:guid}` | 39 | 40-44 |
+| GET | `/api/authors` | 公开 | 作者列表（文章详情需展示作者信息） |
+| GET | `/api/authors/{id:guid}` | 公开 | 单个作者 |
+| **GET** | `/api/authors/me` | ContentWriter | 当前账号的署名身份；未关联作者返回 404 + 可操作提示 |
+| **POST** | `/api/authors` | **Admin** | 创建作者（内容层，不是账号） |
+| PUT | `/api/authors/{id:guid}` | ContentWriter | 更新资料；**管理员可改任何人，作者只能改自己** |
+| **DELETE** | `/api/authors/{id:guid}?version=` | **Admin** | 软删除；其署名文章的 `AuthorId` 置空，**文章保留** |
+
+> **为什么删除作者不删文章**：`Author` 是署名信息，作者离开不应连带删除内容。
+> `Posts.AuthorId` 配置为 `SetNull`，删除后文章仍在，只是作者显示为空。
 
 **Files**（`Controllers/FilesController.cs`）：
 
@@ -989,11 +995,14 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 
 ### 7.3 待新增端点 `[已计划]`
 
-| 方法 | 路由 | 权限 | 说明 |
-|---|---|---|---|
-| POST | `/api/authors` | Admin | 创建作者（内容层）。T14b：作者管理页依赖它 |
-| PUT | `/api/authors/{id}` | Admin / 本人 | 已存在，但前端 `/me/profile` 页尚未接入 |
-| DELETE | `/api/authors/{id}` | Admin | 软删除作者。T14b |
+`[已实现]` 原计划的三项（作者 CRUD、`/me/profile` 接入）已于 T14b 全部完成，
+见上方 Authors 明细。
+
+其余待补的只有搜索相关度排序（T12）：
+
+| 方法 | 路由 | 说明 |
+|---|---|---|
+| — | — | 搜索结果目前按发布时间倒序；`ts_rank` 相关度排序待补（§5.4） |
 
 ### 7.4 乐观锁机制（核心约定）
 
@@ -1164,7 +1173,7 @@ sequenceDiagram
 | Infrastructure | 本地文件存储（白名单 + 体积限制 + 防穿越） |
 | Infrastructure | 慢查询拦截（>500ms） |
 | Infrastructure | 迁移 + `HasData` 种子 |
-| WebApi | 9 控制器 / 45 端点 |
+| WebApi | 9 控制器 / 48 端点 |
 | WebApi | 全局异常 → HTTP 状态码映射 |
 | WebApi | Serilog 请求日志 + 滚动文件 |
 | WebApi | CORS 策略 |
