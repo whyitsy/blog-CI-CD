@@ -67,6 +67,7 @@ const router = createRouter({
         { path: 'posts/:id/edit', name: 'admin-post-edit', component: () => import('@/views/AdminPostEditView.vue') },
         { path: 'categories', name: 'admin-categories', component: () => import('@/views/AdminCategoryListView.vue') },
         { path: 'tags', name: 'admin-tags', component: () => import('@/views/AdminTagListView.vue') },
+        { path: 'users', name: 'admin-users', component: () => import('@/views/AdminUserListView.vue') },
         { path: 'profile', name: 'admin-profile', component: () => import('@/views/AdminProfileView.vue') },
         { path: 'site', name: 'admin-site', component: () => import('@/views/AdminSiteConfigView.vue') },
       ],
