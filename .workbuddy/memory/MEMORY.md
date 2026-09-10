@@ -2,9 +2,21 @@
 
 ## 项目结构
 - 技术栈：Vue3 + TS + Vite 前端；C#/.NET 10 + ASP.NET Core + EF Core + PostgreSQL 后端（无 AutoMapper，清洁架构）
-- 目录：`Blog.Backend/`（Domain/Application/Infrastructure/WebApi）、`Blog.FrontEnd/`、`docs/`（5 份文档 + diagram）
+- 目录：`Blog.Backend/`（Domain/Application/Infrastructure/WebApi）、`Blog.FrontEnd/`、`docs/`
+- **文档现状来源**：`docs/business.md`（业务）/ `docs/backend.md`（后端）/ `docs/frontend.md`（前端）/ `docs/suggestion.md`（待确认 + 勘误）
+  - `docs/01`–`docs/05` 是 2026-09-06 的**历史设计稿**，已核实 16 处与实现不一致（见 suggestion.md 第二部分 E1–E16）
+  - `docs/diagram/*.svg` 是旧架构图（描述的是旧设计，与现状有出入）
+  - 原始需求 `补充具体说明.md` 在仓库根目录
 - 前端样式是**自研 CSS 组件体系**（`styles/tokens.css` + `global.css` + scoped style），**未使用 Naive UI**，后续保持一致
 - 用户指示：不必严格按 `参考设计规范` 打磨视觉，**保证基础功能跑通优先**
+
+## ⚠️ 操作纪律（血泪教训）
+- **提交前必须 `git show --stat HEAD` 复核**：本项目历史上发生过两次「无关文件被误删并混入提交」：
+  1. `3419a54` 混入 39 个 CRLF 行尾噪声文件（后经 `67e27a8` 重做修正，已加 `.gitattributes` 统一 LF）
+  2. `d7ad2f6` 混入 `docs/diagram/*.svg` 与 `补充具体说明.md` 的删除（已 amend 为 `01ae2b5` 修正并恢复文件）
+- 使用 `git add -A` / `git add .` 前先 `git status --short` 看清范围；**优先按路径精确 add**
+- 改动前用 `git ls-files <path>` 确认文件是「已跟踪」还是「计划新增」，避免误判为删除
+
 
 ## 关键架构决策（勿改动）
 1. **乐观锁 = int Version + SQL 条件手动控制**（用户明确要求，跨库通用）：
