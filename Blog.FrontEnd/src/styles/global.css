@@ -203,3 +203,53 @@ a.category-badge:hover {
     scroll-behavior: auto;
   }
 }
+
+/* ---------- 骨架屏（E11）----------
+   shimmer 与 sk-line / sk-block 原在 4 个视图里各写一份（完全相同），
+   现提升为全局基元，供 components/skeleton/* 复用。 */
+.shimmer {
+  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--border-subtle) 50%, var(--bg-raised) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 文本行占位：宽度用 w-* 修饰类控制 */
+.sk-line {
+  height: 12px;
+  border-radius: var(--radius-xs);
+}
+.sk-line.sk-lg {
+  height: 18px;
+}
+.sk-line.sk-title {
+  height: 22px;
+}
+
+/* 块状占位（封面图、头像等） */
+.sk-block {
+  border-radius: var(--radius-sm);
+}
+
+.w-30 { width: 30%; }
+.w-40 { width: 40%; }
+.w-50 { width: 50%; }
+.w-60 { width: 60%; }
+.w-70 { width: 70%; }
+.w-80 { width: 80%; }
+.w-100 { width: 100%; }
+
+/* 骨架容器：垂直堆叠留白 */
+.sk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

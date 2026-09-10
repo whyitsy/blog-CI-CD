@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { deleteSocialLink, getSiteConfig, getSocialLinks, saveSocialLinks, updateSiteConfig } from '@/api/site'
 import { uploadFile } from '@/api/files'
+import FormSkeleton from '@/components/skeleton/FormSkeleton.vue'
 import SocialIcon from '@/components/common/SocialIcon.vue'
 import { useSiteStore } from '@/stores/site'
 import { SiteConfigKey } from '@/types'
@@ -211,7 +212,7 @@ onMounted(load)
   <section class="admin-site">
     <p v-if="errorMsg" class="banner err">{{ errorMsg }}</p>
 
-    <div v-if="loading" class="muted-block">加载中...</div>
+    <FormSkeleton v-if="loading" :fields="4" />
 
     <template v-else>
       <!-- 基本配置 -->

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import TaxonomySkeleton from '@/components/skeleton/TaxonomySkeleton.vue'
 import { getCategories } from '@/api/categories'
 import type { CategoryDto } from '@/types'
 
@@ -30,9 +31,7 @@ function goCategory(id: string) {
     </header>
 
     <div class="container wall-container">
-      <div v-if="loading" class="wall">
-        <div v-for="i in 8" :key="i" class="wall-skeleton shimmer" />
-      </div>
+      <TaxonomySkeleton v-if="loading" :count="10" />
       <p v-else-if="tags.length === 0" class="empty">暂无分类</p>
       <div v-else class="wall">
         <button
@@ -127,23 +126,6 @@ function goCategory(id: string) {
 .wall-btn:hover .wall-count {
   color: #fff;
   background: rgba(255, 255, 255, 0.22);
-}
-
-.wall-skeleton {
-  width: 110px;
-  height: 44px;
-  border-radius: var(--radius-2xl);
-}
-
-.shimmer {
-  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--border-subtle) 50%, var(--bg-raised) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
 .empty {

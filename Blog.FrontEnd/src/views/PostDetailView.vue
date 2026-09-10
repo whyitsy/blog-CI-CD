@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify'
 import { getPostDetail } from '@/api/posts'
 import type { PostDetailDto } from '@/types'
 import GiscusComments from '@/components/common/GiscusComments.vue'
+import PostDetailSkeleton from '@/components/skeleton/PostDetailSkeleton.vue'
 
 const route = useRoute()
 const post = ref<PostDetailDto | null>(null)
@@ -109,12 +110,7 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
     <!-- 阅读进度条 -->
     <div class="progress-bar" :style="{ width: `${readProgress}%` }" />
 
-    <div v-if="loading" class="container detail-loading">
-      <div class="dl-hero shimmer" />
-      <div class="dl-line shimmer w-60" />
-      <div class="dl-line shimmer" />
-      <div class="dl-line shimmer w-80" />
-    </div>
+    <PostDetailSkeleton v-if="loading" />
 
     <div v-else-if="notFound" class="container not-found">
       <p class="nf-icon">🔍</p>
@@ -516,37 +512,8 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
 }
 
 /* ---------- 加载与 404 ---------- */
-.detail-loading {
-  padding-top: var(--space-16);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  max-width: var(--size-prose);
-}
-
-.dl-hero {
-  height: 280px;
-  border-radius: var(--radius-lg);
-}
-
-.dl-line {
-  height: 18px;
-  border-radius: var(--radius-xs);
-}
-
 .w-60 { width: 60%; }
 .w-80 { width: 80%; }
-
-.shimmer {
-  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--border-subtle) 50%, var(--bg-raised) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 
 .not-found {
   padding: var(--space-24) 0;

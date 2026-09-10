@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { deletePost, getPostDetailReadonly, getPosts, publishPost } from '@/api/posts'
+import PostListRowSkeleton from '@/components/skeleton/PostListRowSkeleton.vue'
 import type { PagedResult, PostListItemDto } from '@/types'
 
 const PAGE_SIZE = 20
@@ -89,13 +90,7 @@ const canNext = computed(() => page.value < totalPages.value)
 
     <p v-if="errorMsg" class="err-banner">{{ errorMsg }}</p>
 
-    <div v-if="loading" class="table skeleton">
-      <div v-for="n in 4" :key="n" class="row skel-row">
-        <span class="skel w-40" />
-        <span class="skel w-16" />
-        <span class="skel w-24" />
-      </div>
-    </div>
+    <PostListRowSkeleton v-if="loading" :rows="6" :columns="6" />
 
     <div v-else-if="hasAny" class="table">
       <div class="row head-row">
@@ -336,35 +331,6 @@ const canNext = computed(() => page.value < totalPages.value)
 .link:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* 骨架屏 */
-.skel-row {
-  grid-template-columns: 2fr 1fr 1fr;
-}
-.skel {
-  height: 14px;
-  border-radius: var(--radius-xs);
-  background: linear-gradient(90deg, var(--bg-raised), var(--border-subtle), var(--bg-raised));
-  background-size: 200% 100%;
-  animation: skel 1.2s ease-in-out infinite;
-}
-.w-40 {
-  width: 40%;
-}
-.w-24 {
-  width: 24%;
-}
-.w-16 {
-  width: 16%;
-}
-@keyframes skel {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }
 
 .pager {

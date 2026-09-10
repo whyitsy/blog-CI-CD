@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PagedResult, PostListItemDto } from '@/types'
 import PostCard from './PostCard.vue'
+import PostCardSkeleton from '@/components/skeleton/PostCardSkeleton.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
 
 defineProps<{
@@ -14,17 +15,8 @@ const emit = defineEmits<{ (e: 'page-change', page: number): void }>()
 
 <template>
   <div class="post-list">
-    <!-- 骨架屏 -->
-    <div v-if="loading" class="grid">
-      <div v-for="i in skeletonCount ?? 12" :key="i" class="skeleton-card card">
-        <div class="sk-cover shimmer" />
-        <div class="sk-body">
-          <div class="sk-line shimmer w-70" />
-          <div class="sk-line shimmer" />
-          <div class="sk-line shimmer w-40" />
-        </div>
-      </div>
-    </div>
+    <!-- 骨架屏（组件化，见 docs/frontend.md §6.10） -->
+    <PostCardSkeleton v-if="loading" :count="skeletonCount ?? 12" />
 
     <!-- 空态 -->
     <div v-else-if="!result || result.items.length === 0" class="empty-state">
@@ -63,50 +55,6 @@ const emit = defineEmits<{ (e: 'page-change', page: number): void }>()
 @media (max-width: 767px) {
   .grid {
     grid-template-columns: 1fr;
-  }
-}
-
-/* 骨架屏 */
-.skeleton-card {
-  overflow: hidden;
-}
-
-.sk-cover {
-  aspect-ratio: 16 / 9;
-}
-
-.sk-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-}
-
-.sk-line {
-  height: 14px;
-  border-radius: var(--radius-xs);
-}
-
-.w-70 {
-  width: 70%;
-}
-
-.w-40 {
-  width: 40%;
-}
-
-.shimmer {
-  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--border-subtle) 50%, var(--bg-raised) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
   }
 }
 

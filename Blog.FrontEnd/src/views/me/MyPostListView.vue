@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { deletePost, getPostDetailReadonly, getPosts, publishPost } from '@/api/posts'
 import { useAuthStore } from '@/stores/auth'
+import PostListRowSkeleton from '@/components/skeleton/PostListRowSkeleton.vue'
 import type { PagedResult, PostListItemDto } from '@/types'
 
 const auth = useAuthStore()
@@ -112,7 +113,7 @@ function canNext() {
     <p v-if="errorMsg" class="banner err">{{ errorMsg }}</p>
     <p v-if="okMsg" class="banner ok">{{ okMsg }}</p>
 
-    <div v-if="loading" class="muted-block">加载中...</div>
+    <PostListRowSkeleton v-if="loading" :rows="5" :columns="4" />
 
     <div v-else-if="visibleItems.length" class="list card">
       <div class="row head-row">

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { getAuthors, updateAuthor } from '@/api/authors'
 import { uploadFile } from '@/api/files'
+import FormSkeleton from '@/components/skeleton/FormSkeleton.vue'
 import { useSiteStore } from '@/stores/site'
 import type { AuthorDto } from '@/types'
 
@@ -133,7 +134,7 @@ function onReset() {
     <p v-if="errorMsg" class="banner err">{{ errorMsg }}</p>
     <p v-if="okMsg" class="banner ok">{{ okMsg }}</p>
 
-    <div v-if="loading" class="muted-block">加载中...</div>
+    <FormSkeleton v-if="loading" :fields="3" />
 
     <form v-else-if="author" class="profile-form card" @submit.prevent="onSave">
       <div class="avatar-row">

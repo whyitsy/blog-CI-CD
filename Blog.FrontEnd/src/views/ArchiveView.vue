@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import ArchiveSkeleton from '@/components/skeleton/ArchiveSkeleton.vue'
 import { getArchives } from '@/api/posts'
 import type { ArchiveGroupDto } from '@/types'
 
@@ -44,9 +45,7 @@ function dayOf(iso: string) {
     </header>
 
     <div class="container timeline-container">
-      <div v-if="loading" class="timeline-loading">
-        <div v-for="i in 3" :key="i" class="tl-skeleton shimmer" />
-      </div>
+      <ArchiveSkeleton v-if="loading" :groups="3" />
 
       <p v-else-if="total === 0" class="empty">暂无文章</p>
 
@@ -232,28 +231,6 @@ function dayOf(iso: string) {
 
 .post-row:hover .row-title {
   color: var(--brand-500);
-}
-
-.timeline-loading {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-.tl-skeleton {
-  height: 72px;
-  border-radius: var(--radius-md);
-}
-
-.shimmer {
-  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--border-subtle) 50%, var(--bg-raised) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
 .empty {
