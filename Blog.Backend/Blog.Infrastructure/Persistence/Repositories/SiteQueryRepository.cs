@@ -23,11 +23,14 @@ namespace Blog.Infrastructure.Persistence.Repositories
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<SocialLinkDto>> GetVisibleSocialLinksAsync(CancellationToken cancellationToken = default)
+        public async Task<List<SocialLinkDto>> GetSocialLinksAsync(bool includeHidden, CancellationToken cancellationToken = default)
         {
-            return await _context.SocialLinks
-                .AsNoTracking()
-                .Where(l => l.IsVisible)
+            var query = _context.SocialLinks.AsNoTracking();
+
+            if (!includeHidden)
+                query = query.Where(l => l.IsVisible);
+
+            return await query
                 .OrderBy(l => l.SortOrder)
                 .Select(l => new SocialLinkDto(l.Id, l.Name, l.Icon, l.Url, l.SortOrder, l.IsVisible,
                     l.Version))

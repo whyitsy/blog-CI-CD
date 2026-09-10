@@ -23,6 +23,8 @@ namespace Blog.Application.Interfaces
 
         public const string SiteConfig = SitePrefix + "config";
         public const string SiteSocialLinks = SitePrefix + "social";
+        /// <summary>管理端配置页使用：含隐藏项，与公开首屏的缓存分离</summary>
+        public const string SiteSocialLinksAll = SitePrefix + "social:all";
         public const string SiteStats = SitePrefix + "stats";
 
         /// <summary>关键词做摘要，避免超长或特殊字符污染 key</summary>

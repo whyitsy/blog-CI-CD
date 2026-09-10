@@ -1,11 +1,16 @@
 namespace Blog.Application.Services.Site
 {
-    /// <summary>站点配置聚合结果（面向前端首屏与 Footer）</summary>
+    /// <summary>
+    /// 站点配置聚合结果（面向前端首屏与 Footer）。
+    /// Versions 为该配置项当前的乐观锁版本号（Key -> Version），
+    /// 前端保存某项配置时必须回传对应版本号；不存在的 Key 表示新增（版本号传 0 即可）。
+    /// </summary>
     public record SiteConfigDto(
         string SiteName,
         List<string> HeroSubtitles,
         string? HeroBackground,
-        DateTimeOffset? FoundingDate
+        DateTimeOffset? FoundingDate,
+        Dictionary<string, int> Versions
     );
 
     /// <summary>Version 为乐观锁版本号</summary>

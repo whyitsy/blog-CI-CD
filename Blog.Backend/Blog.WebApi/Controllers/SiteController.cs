@@ -32,10 +32,13 @@ namespace Blog.WebApi.Controllers
         }
 
         /// <summary>首屏底部社交图标（Github、Bilibili 等）</summary>
+        /// <param name="includeHidden">管理端配置页传 true 以同时返回隐藏项；公开首屏默认只取可见项</param>
         [HttpGet("social-links")]
-        public async Task<ApiResponse<List<SocialLinkDto>>> GetSocialLinks(CancellationToken cancellationToken)
+        public async Task<ApiResponse<List<SocialLinkDto>>> GetSocialLinks(
+            [FromQuery] bool includeHidden = false,
+            CancellationToken cancellationToken = default)
         {
-            var links = await _site.GetSocialLinksAsync(cancellationToken);
+            var links = await _site.GetSocialLinksAsync(includeHidden, cancellationToken);
             return ApiResponse<List<SocialLinkDto>>.Ok(links);
         }
 

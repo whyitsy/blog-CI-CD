@@ -48,7 +48,8 @@ namespace Blog.Application.Services.Site
                 ParseSubtitles(dict.GetValueOrDefault(SiteConfigKeys.HeroSubtitles)),
                 dict.GetValueOrDefault(SiteConfigKeys.HeroBackground),
                 DateTimeOffset.TryParse(dict.GetValueOrDefault(SiteConfigKeys.FoundingDate), out var founding)
-                    ? founding : null);
+                    ? founding : null,
+                items.ToDictionary(i => i.Key, i => i.Version, StringComparer.OrdinalIgnoreCase));
         }
 
         public async Task<SiteConfigDto> UpdateConfigAsync(UpdateSiteConfigRequest request, CancellationToken cancellationToken = default)
@@ -75,11 +76,13 @@ namespace Blog.Application.Services.Site
             return await GetConfigAsync(cancellationToken);
         }
 
-        public async Task<List<SocialLinkDto>> GetSocialLinksAsync(CancellationToken cancellationToken = default)
+        public async Task<List<SocialLinkDto>> GetSocialLinksAsync(bool includeHidden = false, CancellationToken cancellationToken = default)
         {
+            var cacheKey = includeHidden ? CacheKeys.SiteSocialLinksAll : CacheKeys.SiteSocialLinks;
+
             var links = await _cache.GetOrCreateAsync(
-                CacheKeys.SiteSocialLinks,
-                ct => _siteQuery.GetVisibleSocialLinksAsync(ct),
+                cacheKey,
+                ct => _siteQuery.GetSocialLinksAsync(includeHidden, ct),
                 ConfigTtl,
                 cacheNull: true,
                 cancellationToken);
@@ -120,8 +123,9 @@ namespace Blog.Application.Services.Site
 
             await _uow.SaveChangesAsync(cancellationToken);
             await _cache.RemoveAsync(CacheKeys.SiteSocialLinks, cancellationToken);
+            await _cache.RemoveAsync(CacheKeys.SiteSocialLinksAll, cancellationToken);
 
-            return await GetSocialLinksAsync(cancellationToken);
+            return await GetSocialLinksAsync(includeHidden: true, cancellationToken);
         }
 
         public async Task<SiteStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
