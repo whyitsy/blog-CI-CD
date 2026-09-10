@@ -1,4 +1,4 @@
-﻿using Blog.Application.Interfaces;
+using Blog.Application.Interfaces;
 using Blog.Domain.IRepository;
 using Blog.Infrastructure.Caching;
 using Blog.Infrastructure.Files;
@@ -6,6 +6,7 @@ using Blog.Infrastructure.Persistence;
 using Blog.Infrastructure.Persistence.Interceptors;
 using Blog.Infrastructure.Persistence.Repositories;
 using Blog.Infrastructure.RateLimiting;
+using Blog.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,8 @@ namespace Blog.Infrastructure
             services.AddScoped<ITagRepository, TagRepository>();
             services.AddScoped<ISiteConfigRepository, SiteConfigRepository>();
             services.AddScoped<ISocialLinkRepository, SocialLinkRepository>();
+            services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<ICollectionRepository, CollectionRepository>();
 
             // 读侧查询仓储
             services.AddScoped<IPostQueryRepository, PostQueryRepository>();
@@ -62,6 +65,18 @@ namespace Blog.Infrastructure
             services.Configure<RateLimitOptions>(configuration.GetSection(RateLimitOptions.SectionName));
             services.AddSingleton<RedisTokenBucketLimiter>();
             services.AddSingleton<InMemoryTokenBucketLimiter>();
+
+            // ---------------------------------------------------------------- 认证与安全
+            services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+            services.AddHttpContextAccessor();
+
+            services.AddSingleton<IPasswordHasher>(_ => new Pbkdf2PasswordHasher());
+            services.AddSingleton<ITokenService, JwtTokenService>();
+            services.AddScoped<ICurrentUser, HttpCurrentUser>();
+
+            // 多实例 + 无 Redis 属于危险配置：限流阈值会被放大到实例数倍（见 docs/backend.md §4.5）。
+            // 在启动期显式校验并直接失败，而不是运行期静默降级。
+            DeploymentGuard.Validate(configuration);
 
             return services;
         }

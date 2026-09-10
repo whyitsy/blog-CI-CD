@@ -1,5 +1,6 @@
 using Blog.Application.Common;
 using Blog.Application.Services.Post;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Blog.WebApi.Controllers
@@ -10,13 +11,20 @@ namespace Blog.WebApi.Controllers
     public class PostsController : ControllerBase
     {
         private readonly IPostService _posts;
+        private readonly Blog.Application.Interfaces.ICurrentUser _currentUser;
 
-        public PostsController(IPostService posts)
+        public PostsController(IPostService posts, Blog.Application.Interfaces.ICurrentUser currentUser)
         {
             _posts = posts;
+            _currentUser = currentUser;
         }
 
-        /// <summary>分页文章列表（支持 categoryId / tagId / keyword 组合过滤，keyword 为模糊搜索）</summary>
+        /// <summary>
+        /// 分页文章列表（支持 categoryId / tagId / collectionId / authorId / keyword 组合过滤）。
+        /// keyword 走中文全文检索。
+        /// includeUnpublished=true 时必须已登录，且 Author 角色只能看到自己创建的文章
+        /// （数据级过滤在 PostService 内完成，见草稿权限保护 Q7）。
+        /// </summary>
         [HttpGet]
         public async Task<ApiResponse<PagedResult<PostCardDto>>> GetPaged(
             [FromQuery] int page = 1,
@@ -25,6 +33,9 @@ namespace Blog.WebApi.Controllers
             [FromQuery] Guid? tagId = null,
             [FromQuery] string? keyword = null,
             [FromQuery] bool includeUnpublished = false,
+            [FromQuery] Guid? collectionId = null,
+            [FromQuery] Guid? authorId = null,
+            [FromQuery] bool mine = false,
             CancellationToken cancellationToken = default)
         {
             var query = new PostQueryRequest
@@ -35,6 +46,10 @@ namespace Blog.WebApi.Controllers
                 TagId = tagId,
                 Keyword = keyword,
                 IncludeUnpublished = includeUnpublished,
+                CollectionId = collectionId,
+                AuthorId = authorId,
+                // mine=true 时只看自己创建的（作者工作区）。服务层会校验与当前登录者一致。
+                OwnedByUserId = mine ? _currentUser.UserId : null,
             };
             var result = await _posts.GetPagedAsync(query, cancellationToken);
             return ApiResponse<PagedResult<PostCardDto>>.Ok(result);
@@ -45,6 +60,21 @@ namespace Blog.WebApi.Controllers
         public async Task<ApiResponse<PostDetailDto>> GetDetail(Guid id, CancellationToken cancellationToken)
         {
             var detail = await _posts.GetDetailAsync(id, cancellationToken)
+                ?? throw new Blog.Application.Common.Exceptions.BusinessException("文章不存在", ErrorCodes.NotFound);
+            return ApiResponse<PostDetailDto>.Ok(detail);
+        }
+
+        /// <summary>
+        /// 文章详情（**不计数**）：供管理端/编辑器取数据用。
+        /// 与 GET /api/posts/{id} 的区别是**不会**让浏览量 +1，
+        /// 避免「后台点一次编辑就 +1」污染统计（见 docs/business.md Q12）。
+        /// 需要登录（编辑器场景），且未发布文章仍受草稿权限保护。
+        /// </summary>
+        [HttpGet("{id:guid}/readonly")]
+        [Authorize(Policy = "ContentWriter")]
+        public async Task<ApiResponse<PostDetailDto>> GetDetailReadonly(Guid id, CancellationToken cancellationToken)
+        {
+            var detail = await _posts.GetDetailReadonlyAsync(id, cancellationToken)
                 ?? throw new Blog.Application.Common.Exceptions.BusinessException("文章不存在", ErrorCodes.NotFound);
             return ApiResponse<PostDetailDto>.Ok(detail);
         }
@@ -71,6 +101,7 @@ namespace Blog.WebApi.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "ContentWriter")]
         public async Task<ApiResponse<PostDetailDto>> Create([FromBody] CreatePostRequest request, CancellationToken cancellationToken)
         {
             var created = await _posts.CreateAsync(request, cancellationToken);
@@ -78,6 +109,7 @@ namespace Blog.WebApi.Controllers
         }
 
         [HttpPut("{id:guid}")]
+        [Authorize(Policy = "ContentWriter")]
         public async Task<ApiResponse<PostDetailDto>> Update(Guid id, [FromBody] UpdatePostRequest request, CancellationToken cancellationToken)
         {
             var updated = await _posts.UpdateAsync(id, request, cancellationToken);
@@ -86,6 +118,7 @@ namespace Blog.WebApi.Controllers
 
         /// <summary>发布 / 下架，需携带当前版本号</summary>
         [HttpPost("{id:guid}/publish")]
+        [Authorize(Policy = "ContentWriter")]
         public async Task<ApiResponse<PostDetailDto>> Publish(
             Guid id,
             [FromQuery] int version,
@@ -97,6 +130,7 @@ namespace Blog.WebApi.Controllers
         }
 
         [HttpDelete("{id:guid}")]
+        [Authorize(Policy = "ContentWriter")]
         public async Task<ApiResponse<object?>> Delete(Guid id, [FromQuery] int version, CancellationToken cancellationToken)
         {
             await _posts.DeleteAsync(id, version, cancellationToken);

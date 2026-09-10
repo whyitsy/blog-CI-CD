@@ -1,4 +1,5 @@
-﻿using Blog.Application.Services.Author;
+﻿using Blog.Application.Services.Auth;
+using Blog.Application.Services.Author;
 using Blog.Application.Services.Category;
 using Blog.Application.Services.Post;
 using Blog.Application.Services.Site;
@@ -16,6 +17,8 @@ namespace Blog.Application
             services.AddScoped<ITagService, TagService>();
             services.AddScoped<ISiteService, SiteService>();
             services.AddScoped<IAuthorService, AuthorService>();
+            services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<IUserService, UserService>();
 
             return services;
         }

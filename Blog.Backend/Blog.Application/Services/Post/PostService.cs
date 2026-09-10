@@ -5,6 +5,7 @@ using Blog.Domain.Entities;
 using Blog.Domain.IRepository;
 using PostEntity = Blog.Domain.Entities.Post;
 using TagEntity = Blog.Domain.Entities.Tag;
+using CollectionEntity = Blog.Domain.Entities.Collection;
 
 namespace Blog.Application.Services.Post
 {
@@ -19,8 +20,10 @@ namespace Blog.Application.Services.Post
         private readonly ITagRepository _tags;
         private readonly ICategoryRepository _categories;
         private readonly IAuthorRepository _authors;
+        private readonly ICollectionRepository _collections;
         private readonly IUnitOfWork _uow;
         private readonly ICacheService _cache;
+        private readonly ICurrentUser _currentUser;
 
         public PostService(
             IPostQueryRepository postQuery,
@@ -28,21 +31,43 @@ namespace Blog.Application.Services.Post
             ITagRepository tags,
             ICategoryRepository categories,
             IAuthorRepository authors,
+            ICollectionRepository collections,
             IUnitOfWork uow,
-            ICacheService cache)
+            ICacheService cache,
+            ICurrentUser currentUser)
         {
             _postQuery = postQuery;
             _posts = posts;
             _tags = tags;
             _categories = categories;
             _authors = authors;
+            _collections = collections;
             _uow = uow;
             _cache = cache;
+            _currentUser = currentUser;
         }
 
         public Task<PagedResult<PostCardDto>> GetPagedAsync(PostQueryRequest query, CancellationToken cancellationToken = default)
         {
             var normalized = Normalize(query);
+
+            // 管理端：Author 角色只能看到自己的草稿/文章；Admin 可见全部。
+            // 这是「草稿权限保护」（Q7）的关键一环 —— 仅靠端点鉴权不够，必须过滤数据。
+            if (normalized.IncludeUnpublished && !_currentUser.IsAdmin)
+            {
+                if (_currentUser.Role != UserRole.Author || _currentUser.UserId is null)
+                    throw new BusinessException("无权查看未发布内容", ErrorCodes.Forbidden);
+
+                normalized = normalized with { OwnedByUserId = _currentUser.UserId };
+            }
+
+            // 作者工作区：显式只看自己的
+            if (normalized.OwnedByUserId.HasValue && !_currentUser.IsAdmin &&
+                normalized.OwnedByUserId != _currentUser.UserId)
+            {
+                throw new BusinessException("无权查看他人的文章", ErrorCodes.Forbidden);
+            }
+
             return _cache.GetOrCreateAsync(
                 CacheKeys.PostList(normalized),
                 ct => _postQuery.GetPagedAsync(normalized, ct),
@@ -51,7 +76,19 @@ namespace Blog.Application.Services.Post
                 cancellationToken)!;
         }
 
-        public async Task<PostDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// 详情（**计数**）：每次调用浏览量 +1。用于公开文章页。
+        /// </summary>
+        public Task<PostDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default) =>
+            GetDetailInternalAsync(id, countView: true, cancellationToken);
+
+        /// <summary>
+        /// 详情（**不计数**）：管理端/编辑页取数据用，避免后台操作污染浏览量（Q12）。
+        /// </summary>
+        public Task<PostDetailDto?> GetDetailReadonlyAsync(Guid id, CancellationToken cancellationToken = default) =>
+            GetDetailInternalAsync(id, countView: false, cancellationToken);
+
+        private async Task<PostDetailDto?> GetDetailInternalAsync(Guid id, bool countView, CancellationToken cancellationToken)
         {
             var detail = await _cache.GetOrCreateAsync(
                 CacheKeys.PostDetail(id),
@@ -61,6 +98,12 @@ namespace Blog.Application.Services.Post
                 cancellationToken);
 
             if (detail is null) return null;
+
+            // 未发布的文章只有作者本人与管理员可读（草稿保护）
+            if (!detail.PublishedAt.HasValue && !CanReadUnpublished(detail))
+                throw new BusinessException("文章不存在", ErrorCodes.NotFound);
+
+            if (!countView) return detail;
 
             // 浏览量：DB 原子自增（跳过乐观锁，避免高频访问产生并发冲突），同步刷新缓存值
             await _posts.IncrementViewCountAsync(id);
@@ -86,7 +129,11 @@ namespace Blog.Application.Services.Post
         {
             ValidateTitleAndContent(request.Title, request.Content);
 
-            var authorId = await ResolveDefaultAuthorIdAsync(cancellationToken);
+            // 未登录不允许创建（无认证时角色为 null）
+            if (!_currentUser.IsAuthenticated)
+                throw new BusinessException("未登录", ErrorCodes.Unauthorized);
+
+            var authorId = await ResolveAuthorIdAsync(request.AuthorId, cancellationToken);
 
             if (request.CategoryId.HasValue &&
                 await _categories.GetByIdAsync(request.CategoryId.Value, cancellationToken) is null)
@@ -94,10 +141,18 @@ namespace Blog.Application.Services.Post
                 throw new BusinessException("分类不存在", ErrorCodes.NotFound);
             }
 
-            var post = new PostEntity(request.Title, request.Content, authorId, request.CategoryId,
-                request.CoverImage ?? string.Empty, publishNow: request.Publish);
+            var post = new PostEntity(
+                request.Title,
+                request.Content,
+                request.Summary,
+                authorId,
+                request.CategoryId,
+                request.CoverImage ?? string.Empty,
+                createdByUserId: _currentUser.UserId,
+                publishNow: request.Publish);
 
             await ApplyTagsAsync(post, request.TagIds, cancellationToken);
+            await ApplyCollectionsAsync(post, request.CollectionIds, cancellationToken);
 
             await _posts.AddAsync(post, cancellationToken);
             await _uow.SaveChangesAsync(cancellationToken);
@@ -113,11 +168,14 @@ namespace Blog.Application.Services.Post
             var post = await _posts.GetByIdAsync(id, cancellationToken)
                 ?? throw new BusinessException("文章不存在", ErrorCodes.NotFound);
 
+            EnsureCanManage(post);
+
             // 乐观锁：以客户端版本号为基准，UPDATE ... WHERE "Version" = @expected
             _posts.ApplyOptimisticVersion(post, ValidateVersion(request.Version));
 
-            post.Update(request.Title, request.Content, request.CategoryId, request.CoverImage ?? string.Empty);
+            post.Update(request.Title, request.Content, request.Summary, request.CategoryId, request.CoverImage ?? string.Empty);
             await ApplyTagsAsync(post, request.TagIds, cancellationToken);
+            await ApplyCollectionsAsync(post, request.CollectionIds, cancellationToken);
 
             await _uow.SaveChangesAsync(cancellationToken);
             await InvalidatePostCachesAsync(cancellationToken);
@@ -130,6 +188,7 @@ namespace Blog.Application.Services.Post
             var post = await _posts.GetByIdAsync(id, cancellationToken)
                 ?? throw new BusinessException("文章不存在", ErrorCodes.NotFound);
 
+            EnsureCanManage(post);
             _posts.ApplyOptimisticVersion(post, ValidateVersion(version));
 
             _posts.Remove(post);
@@ -142,6 +201,7 @@ namespace Blog.Application.Services.Post
             var post = await _posts.GetByIdAsync(id, cancellationToken)
                 ?? throw new BusinessException("文章不存在", ErrorCodes.NotFound);
 
+            EnsureCanManage(post);
             _posts.ApplyOptimisticVersion(post, ValidateVersion(version));
 
             if (publish) post.Publish(); else post.Unpublish();
@@ -152,6 +212,32 @@ namespace Blog.Application.Services.Post
             return await LoadDetailOrThrowAsync(id, cancellationToken);
         }
 
+        // ---------------------------------------------------------------- 权限
+
+        /// <summary>
+        /// 归属校验：管理员可操作全部；作者只能操作自己创建（或署名给自己）的文章。
+        /// 必须放在服务层，因为要先查到实体才知道归属，光靠 [Authorize] 无法覆盖。
+        /// </summary>
+        private void EnsureCanManage(PostEntity post)
+        {
+            if (_currentUser.IsAdmin) return;
+
+            if (!_currentUser.IsAuthenticated)
+                throw new BusinessException("未登录", ErrorCodes.Unauthorized);
+
+            var isOwner =
+                (post.CreatedByUserId.HasValue && post.CreatedByUserId == _currentUser.UserId) ||
+                (post.AuthorId.HasValue && _currentUser.AuthorId.HasValue && post.AuthorId == _currentUser.AuthorId);
+
+            if (!isOwner)
+                throw new BusinessException("无权操作他人的文章", ErrorCodes.Forbidden);
+        }
+
+        private bool CanReadUnpublished(PostDetailDto detail) =>
+            _currentUser.IsAdmin ||
+            ((detail.CreatedByUserId.HasValue && detail.CreatedByUserId == _currentUser.UserId) ||
+             (detail.AuthorId != Guid.Empty && _currentUser.AuthorId.HasValue && detail.AuthorId == _currentUser.AuthorId.Value));
+
         private static int ValidateVersion(int version)
         {
             if (version < 1)
@@ -159,7 +245,9 @@ namespace Blog.Application.Services.Post
             return version;
         }
 
-        private async Task ApplyTagsAsync(Domain.Entities.Post post, List<Guid>? tagIds, CancellationToken cancellationToken)
+        // ---------------------------------------------------------------- 关联同步
+
+        private async Task ApplyTagsAsync(PostEntity post, List<Guid>? tagIds, CancellationToken cancellationToken)
         {
             var ids = (tagIds ?? []).Distinct().ToList();
             var tags = ids.Count == 0 ? new List<TagEntity>() : await _tags.GetByIdsAsync(ids, cancellationToken);
@@ -177,6 +265,35 @@ namespace Blog.Application.Services.Post
                 post.Tags.Add(tag);
         }
 
+        /// <summary>同步文章与专栏的关联（多对多，带专栏内排序）</summary>
+        private async Task ApplyCollectionsAsync(PostEntity post, List<Guid>? collectionIds, CancellationToken cancellationToken)
+        {
+            // null 表示「本次不改动专栏关联」；空数组表示「清空关联」
+            if (collectionIds is null) return;
+
+            var ids = collectionIds.Distinct().ToList();
+            var collections = ids.Count == 0
+                ? new List<CollectionEntity>()
+                : await _collections.GetByIdsAsync(ids, cancellationToken);
+
+            if (collections.Count != ids.Count)
+                throw new BusinessException("存在不合法的专栏 id", ErrorCodes.InvalidArgument);
+
+            foreach (var link in post.CollectionLinks.Where(l => !ids.Contains(l.CollectionId)).ToList())
+                post.CollectionLinks.Remove(link);
+
+            var existing = post.CollectionLinks.Select(l => l.CollectionId).ToHashSet();
+            foreach (var collection in collections.Where(c => !existing.Contains(c.Id)))
+            {
+                post.CollectionLinks.Add(new PostCollection
+                {
+                    PostId = post.Id,
+                    CollectionId = collection.Id,
+                    SortOrder = post.CollectionLinks.Count,
+                });
+            }
+        }
+
         private async Task<PostDetailDto> LoadDetailOrThrowAsync(Guid id, CancellationToken cancellationToken)
         {
             // 写入后立即失效缓存，直接读库保证拿到最新数据
@@ -185,12 +302,31 @@ namespace Blog.Application.Services.Post
                 ?? throw new BusinessException("文章不存在", ErrorCodes.NotFound);
         }
 
-        private async Task<Guid> ResolveDefaultAuthorIdAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// 解析署名作者：
+        ///   1. 管理员可显式指定 AuthorId
+        ///   2. 作者身份登录时强制用自己关联的 Author（不能冒名）
+        ///   3. 回退到库中首个作者，保持「无账号体系的既有数据」仍可工作
+        /// </summary>
+        private async Task<Guid?> ResolveAuthorIdAsync(Guid? requested, CancellationToken cancellationToken)
         {
+            if (_currentUser.IsAdmin && requested.HasValue)
+            {
+                if (await _authors.GetByIdAsync(requested.Value, cancellationToken) is null)
+                    throw new BusinessException("指定的作者不存在", ErrorCodes.InvalidArgument);
+                return requested.Value;
+            }
+
+            if (!_currentUser.IsAdmin)
+            {
+                if (_currentUser.AuthorId.HasValue)
+                    return _currentUser.AuthorId;
+
+                // 作者账号未关联 Author：回退首个作者，避免直接失败
+            }
+
             var authors = await _authors.QueryByConditionAsync(a => true, cancellationToken);
-            var author = authors.FirstOrDefault()
-                ?? throw new BusinessException("尚未创建作者，无法发布文章", ErrorCodes.BusinessRule);
-            return author.Id;
+            return authors.FirstOrDefault()?.Id;
         }
 
         private Task InvalidatePostCachesAsync(CancellationToken cancellationToken)

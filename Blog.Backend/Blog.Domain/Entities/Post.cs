@@ -10,55 +10,74 @@ public class Post : BaseEntity
     public DateTimeOffset? UpdatedAt { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public string Content { get; private set; } = string.Empty;
+
+    /// <summary>摘要。为空时自动取正文前 50 字；作者填写后不再被自动覆盖（见 docs/tech.md §3.4 / T4）</summary>
+    public string Summary { get; private set; } = string.Empty;
+
     public string CoverImage { get; private set; } = string.Empty;
-    public Guid AuthorId { get; private set; }
+
+    /// <summary>署名作者。可空，Author 删除时置空（与配置的 SetNull 删除行为对齐）</summary>
+    public Guid? AuthorId { get; private set; }
+
+    /// <summary>创建者账号。用于归属校验（谁能改这篇文章）与审计；账号删除时置空</summary>
+    public Guid? CreatedByUserId { get; private set; }
+
     public DateTimeOffset? PublishedAt { get; private set; }
     public bool IsPublished => PublishedAt.HasValue;
     public int ViewCount { get; private set; }
-
-    /// <summary>内容前 50 字摘要，写入时计算，避免列表页全量拉取 Content</summary>
-    public string Summary { get; private set; } = string.Empty;
 
     /// <summary>文章字数（字符数），写入时计算，用于站点统计</summary>
     public int WordCount { get; private set; }
 
     public Guid? CategoryId { get; set; } // 可空：配置的删除关系为 SetNull
+
     // 导航属性
     public Category? Category { get; set; }
     public ICollection<Tag> Tags { get; set; } = [];
+    public ICollection<PostCollection> CollectionLinks { get; set; } = [];
     public Author? Author { get; set; }
 
     private Post() { } // EF Core 需要一个无参构造函数
 
-    public Post(string title, string content, Guid authorId, Guid? categoryId, string coverImage, bool publishNow = false)
+    public Post(string title, string content, string? summary, Guid? authorId, Guid? categoryId,
+        string coverImage, Guid? createdByUserId = null, bool publishNow = false)
     {
         Title = title;
         Content = content;
         AuthorId = authorId;
         CategoryId = categoryId;
         CoverImage = coverImage;
+        CreatedByUserId = createdByUserId;
         CreatedAt = DateTimeOffset.UtcNow;
-        RefreshDerivedFields();
+
+        // 摘要：作者填了就用作者的，没填才自动截取
+        Summary = string.IsNullOrWhiteSpace(summary) ? BuildAutoSummary(content) : summary.Trim();
+        WordCount = content?.Length ?? 0;
+
         if (publishNow) PublishedAt = DateTimeOffset.UtcNow;
     }
 
-    public void Update(string title, string content, Guid? categoryId, string coverImage)
+    /// <summary>
+    /// 更新文章。
+    /// 摘要规则（T4：由应用层判定，不新增字段）：<paramref name="summary"/> 为空则重新自动截取，
+    /// 非空则使用传入值 —— 因此作者显式填写的摘要不会被后续更新覆盖。
+    /// </summary>
+    public void Update(string title, string content, string? summary, Guid? categoryId, string coverImage)
     {
         Title = title;
         Content = content;
         CategoryId = categoryId;
         CoverImage = coverImage;
         UpdatedAt = DateTimeOffset.UtcNow;
-        RefreshDerivedFields();
+
+        Summary = string.IsNullOrWhiteSpace(summary) ? BuildAutoSummary(content) : summary.Trim();
+        WordCount = content?.Length ?? 0;
     }
 
-    /// <summary>根据当前内容刷新摘要与字数</summary>
-    private void RefreshDerivedFields()
+    private static string BuildAutoSummary(string? content)
     {
-        WordCount = Content?.Length ?? 0;
-        Summary = Content is null || Content.Length <= SummaryLength
-            ? Content ?? string.Empty
-            : Content[..SummaryLength];
+        if (string.IsNullOrEmpty(content)) return string.Empty;
+        return content.Length <= SummaryLength ? content : content[..SummaryLength];
     }
 
     public void Publish()

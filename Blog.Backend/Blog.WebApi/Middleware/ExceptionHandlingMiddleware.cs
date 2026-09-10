@@ -31,8 +31,7 @@ namespace Blog.WebApi.Middleware
             catch (BusinessException ex)
             {
                 _logger.LogWarning("业务异常 {Code}: {Message} {Path}", ex.Code, ex.Message, context.Request.Path);
-                var status = ex.Code == ErrorCodes.NotFound ? StatusCodes.Status404NotFound : StatusCodes.Status400BadRequest;
-                await WriteAsync(context, status, ex.Code, ex.Message);
+                await WriteAsync(context, MapStatusCode(ex.Code), ex.Code, ex.Message);
             }
             catch (DbUpdateConcurrencyException ex)
             {
@@ -47,6 +46,23 @@ namespace Blog.WebApi.Middleware
                     "服务器内部错误");
             }
         }
+
+        /// <summary>
+        /// 业务码 -> HTTP 状态码。
+        /// 4010/4030 必须映射为 401/403 而非 400，否则：
+        ///   - 前端无法用 HTTP 状态判断「需要重新登录」（拦截器通常只看 401）
+        ///   - 语义错误：400 表示「请求本身有问题」，而这两个码表示「身份/权限有问题」
+        /// </summary>
+        private static int MapStatusCode(int code) => code switch
+        {
+            ErrorCodes.Unauthorized => StatusCodes.Status401Unauthorized,
+            ErrorCodes.Forbidden => StatusCodes.Status403Forbidden,
+            ErrorCodes.NotFound => StatusCodes.Status404NotFound,
+            ErrorCodes.ConcurrencyConflict => StatusCodes.Status409Conflict,
+            ErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
+            ErrorCodes.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+            _ => StatusCodes.Status400BadRequest,
+        };
 
         private static async Task WriteAsync(HttpContext context, int httpStatus, int code, string message)
         {

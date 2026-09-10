@@ -11,6 +11,9 @@ namespace Blog.Infrastructure.Persistence.Repositories
     /// </summary>
     public class PostQueryRepository : IPostQueryRepository
     {
+        /// <summary>中文全文检索配置名（由迁移创建，见 docs/backend.md §5.4）</summary>
+        private const string ChineseTextSearchConfig = "chinese";
+
         private readonly BlogDbContext _context;
 
         public PostQueryRepository(BlogDbContext context)
@@ -20,18 +23,59 @@ namespace Blog.Infrastructure.Persistence.Repositories
 
         public async Task<PagedResult<PostCardDto>> GetPagedAsync(PostQueryRequest query, CancellationToken cancellationToken = default)
         {
-            var published = _context.Posts.AsNoTracking().Where(p => !p.IsDeleted);
+            var source = _context.Posts.AsNoTracking().Where(p => !p.IsDeleted);
             if (!query.IncludeUnpublished)
             {
-                published = published.Where(p => p.PublishedAt != null);
+                source = source.Where(p => p.PublishedAt != null);
             }
-            var q = ApplyFilters(published, query);
 
-            var total = await q.CountAsync(cancellationToken);
+            var keyword = string.IsNullOrWhiteSpace(query.Keyword) ? null : query.Keyword.Trim();
 
-            var items = await q
+            IQueryable<Post> filtered;
+            if (keyword is not null)
+            {
+                // 中文全文检索。这里用参数化原生 SQL 而不是 EF.Functions.PlainToTsQuery：
+                //   1. 可翻译性：在「影子属性 + 参数化 tsquery」形态下，EF Core 会把
+                //      PlainToTsQuery 判为客户端求值并抛异常（实测确认）。
+                //   2. 用 `Id IN (子查询)` 而不是直接 FromSql 包整表，是为了让外层仍能自由组合
+                //      分类/标签/作者等过滤与投影，避免 FromSql 与后续 Where 的组合限制。
+                //   3. 参数由 FromSqlInterpolated 自动参数化，不存在 SQL 注入。
+                // plainto_tsquery 会把自然语言输入安全地转成 tsquery，
+                // 因此用户输入的 & | ! 等 tsquery 语法字符不会被当作操作符。
+                // 注意：配置名必须显式 ::regconfig 转型。
+                // PostgreSQL 的 plainto_tsquery 重载是 (regconfig, text) / (text)，
+                // 没有 (text, text)；参数化时若只传字符串会报
+                //   42883: function plainto_tsquery(text, text) does not exist
+                var config = ChineseTextSearchConfig;
+                var matchedIds = _context.Posts
+                    .FromSqlInterpolated($@"
+                        SELECT p.* FROM ""Posts"" AS p
+                        WHERE p.""SearchVector"" @@ plainto_tsquery({config}::regconfig, {keyword})")
+                    .AsNoTracking()
+                    .Where(p => !p.IsDeleted && p.PublishedAt != null)
+                    .Select(p => p.Id);
+
+                filtered = _context.Posts.AsNoTracking().Where(p => matchedIds.Contains(p.Id));
+            }
+            else
+            {
+                filtered = source;
+            }
+
+            source = ApplyFilters(filtered, query);
+
+            var total = await source.CountAsync(cancellationToken);
+
+            // 排序：按发布时间倒序。
+            // TODO(相关度排序)：生成列已带 setweight 权重（标题 A > 摘要 B > 正文 C），
+            // 但 EF Core 对 ts_rank 的翻译在“影子属性 + 参数化 tsquery”形态下会退回客户端求值，
+            // 因此暂不做相关度排序；命中集合本身已由 GIN 索引加速。
+            // 后续可用原生 SQL 或映射 ts_rank 用户函数补上（见 docs/backend.md §5.4）。
+            var ordered = source
                 .OrderByDescending(p => p.PublishedAt)
-                .ThenByDescending(p => p.Id)
+                .ThenByDescending(p => p.Id);
+
+            var items = await ordered
                 .Skip((query.Page - 1) * query.PageSize)
                 .Take(query.PageSize)
                 .Select(p => new PostCardDto(
@@ -63,9 +107,14 @@ namespace Blog.Infrastructure.Persistence.Repositories
                     p.CategoryId,
                     p.Category != null ? p.Category.Name : null,
                     p.Tags.Select(t => new TagBriefDto(t.Id, t.Name)).ToList(),
-                    p.AuthorId,
+                    p.CollectionLinks
+                        .OrderBy(l => l.SortOrder)
+                        .Select(l => new CollectionBriefDto(l.CollectionId, l.Collection!.Title, l.Collection.Slug))
+                        .ToList(),
+                    p.AuthorId ?? Guid.Empty,
                     p.Author != null ? p.Author.Name : null,
                     p.Author != null ? p.Author.Avatar : null,
+                    p.CreatedByUserId,
                     p.PublishedAt,
                     p.UpdatedAt,
                     p.ViewCount,
@@ -102,16 +151,15 @@ namespace Blog.Infrastructure.Persistence.Repositories
             if (query.TagId.HasValue)
                 source = source.Where(p => p.Tags.Any(t => t.Id == query.TagId.Value));
 
-            if (!string.IsNullOrWhiteSpace(query.Keyword))
-            {
-                // 模糊匹配：标题 / 正文 / 分类名 / 标签名（ILIKE 语义，PostgreSQL 默认区分大小写，故统一小写比较）
-                var kw = query.Keyword.Trim().ToLowerInvariant();
-                source = source.Where(p =>
-                    p.Title.ToLower().Contains(kw) ||
-                    p.Content.ToLower().Contains(kw) ||
-                    (p.Category != null && p.Category.Name.ToLower().Contains(kw)) ||
-                    p.Tags.Any(t => t.Name.ToLower().Contains(kw)));
-            }
+            if (query.CollectionId.HasValue)
+                source = source.Where(p => p.CollectionLinks.Any(l => l.CollectionId == query.CollectionId.Value));
+
+            if (query.AuthorId.HasValue)
+                source = source.Where(p => p.AuthorId == query.AuthorId.Value);
+
+            // 作者工作区：只看自己创建的
+            if (query.OwnedByUserId.HasValue)
+                source = source.Where(p => p.CreatedByUserId == query.OwnedByUserId.Value);
 
             return source;
         }
