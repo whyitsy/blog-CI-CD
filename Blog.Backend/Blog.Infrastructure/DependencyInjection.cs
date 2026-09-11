@@ -2,6 +2,7 @@ using Blog.Application.Interfaces;
 using Blog.Domain.IRepository;
 using Blog.Infrastructure.Caching;
 using Blog.Infrastructure.Files;
+using Blog.Infrastructure.Images;
 using Blog.Infrastructure.Persistence;
 using Blog.Infrastructure.Persistence.Interceptors;
 using Blog.Infrastructure.Persistence.Repositories;
@@ -60,6 +61,9 @@ namespace Blog.Infrastructure
 
             // 文件存储（本地磁盘，/api/files 独立接口对外）
             services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+            // 上传图片转 WebP（节省传输流量）。无状态，单例即可。
+            services.Configure<ImageOptimizationOptions>(configuration.GetSection(ImageOptimizationOptions.SectionName));
+            services.AddSingleton<IImageOptimizer, ImageSharpOptimizer>();
             services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
             // 令牌桶限流：Redis 分布式桶 + 内存降级桶（规则见 appsettings RateLimit 节）

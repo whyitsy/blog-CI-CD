@@ -1,4 +1,5 @@
 using Blog.Application.Interfaces;
+using Blog.Infrastructure.Images;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -32,23 +33,31 @@ namespace Blog.Infrastructure.Files
         };
 
         private readonly FileStorageOptions _options;
+        private readonly IImageOptimizer _optimizer;
         private readonly ILogger<LocalFileStorageService> _logger;
 
-        public LocalFileStorageService(IOptions<FileStorageOptions> options, ILogger<LocalFileStorageService> logger)
+        public LocalFileStorageService(
+            IOptions<FileStorageOptions> options,
+            IImageOptimizer optimizer,
+            ILogger<LocalFileStorageService> logger)
         {
             _options = options.Value;
+            _optimizer = optimizer;
             _logger = logger;
         }
 
-        public async Task<string> SaveAsync(Stream content, string fileName, string? contentType = null, CancellationToken cancellationToken = default)
+        public async Task<StoredFile> SaveAsync(Stream content, string fileName, string? contentType = null, CancellationToken cancellationToken = default)
         {
             var extension = Path.GetExtension(fileName);
             if (string.IsNullOrEmpty(extension) || !AllowedExtensions.Contains(extension))
                 throw new ArgumentException($"不支持的文件类型：{extension}");
 
+            // 位图先转 WebP（转换失败或不该转时原样返回，见 IImageOptimizer 约定）
+            var optimized = await _optimizer.OptimizeAsync(content, extension, cancellationToken);
+
             var now = DateTimeOffset.UtcNow;
             var relativeDir = Path.Combine(now.Year.ToString("D4"), now.Month.ToString("D2"));
-            var storedName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+            var storedName = $"{Guid.NewGuid():N}{optimized.Extension}";
             var relativePath = Path.Combine(relativeDir, storedName);
 
             if (!TryResolveSafePath(relativePath, out var fullPath))
@@ -58,13 +67,18 @@ namespace Blog.Infrastructure.Files
 
             await using (var output = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                await content.CopyToAsync(output, cancellationToken);
+                await output.WriteAsync(optimized.Content, cancellationToken);
             }
 
-            _logger.LogInformation("文件已保存 {Path} ({Size} bytes)", relativePath, new FileInfo(fullPath).Length);
+            _logger.LogInformation("文件已保存 {Path} ({Size} bytes，原始 {Original} bytes，转换={Converted})",
+                relativePath, optimized.Content.Length, optimized.OriginalLength, optimized.Converted);
 
             // 统一返回正斜杠的 URL 相对路径
-            return $"/api/files/{now.Year:D4}/{now.Month:D2}/{storedName}";
+            return new StoredFile(
+                $"/api/files/{now.Year:D4}/{now.Month:D2}/{storedName}",
+                optimized.Content.Length,
+                optimized.OriginalLength,
+                optimized.Converted);
         }
 
         public Task<(Stream Stream, string ContentType)?> GetAsync(string relativePath, CancellationToken cancellationToken = default)

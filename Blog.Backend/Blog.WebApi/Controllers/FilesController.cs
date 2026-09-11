@@ -22,7 +22,10 @@ namespace Blog.WebApi.Controllers
             _options = options.Value;
         }
 
-        /// <summary>上传文件，返回可访问的相对 URL</summary>
+        /// <summary>
+        /// 上传文件，返回可访问的相对 URL。
+        /// 位图会自动转 WebP，响应里带回转换前后的字节数以便前端提示压缩效果。
+        /// </summary>
         [HttpPost("upload")]
         [RequestSizeLimit(50 * 1024 * 1024)]
         public async Task<ApiResponse<object>> Upload(IFormFile file, CancellationToken cancellationToken)
@@ -37,8 +40,14 @@ namespace Blog.WebApi.Controllers
             try
             {
                 await using var stream = file.OpenReadStream();
-                var url = await _storage.SaveAsync(stream, file.FileName, file.ContentType, cancellationToken);
-                return ApiResponse<object>.Ok(new { url });
+                var stored = await _storage.SaveAsync(stream, file.FileName, file.ContentType, cancellationToken);
+                return ApiResponse<object>.Ok(new
+                {
+                    url = stored.Url,
+                    storedBytes = stored.StoredBytes,
+                    originalBytes = stored.OriginalBytes,
+                    converted = stored.Converted,
+                });
             }
             catch (ArgumentException ex)
             {
