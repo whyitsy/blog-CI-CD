@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using Serilog.Events;
 
 // Serilog 启动早期引导日志（应用构建前的异常也能记录）
 Log.Logger = new LoggerConfiguration()
@@ -130,16 +131,31 @@ try
         app.MapOpenApi();
     }
 
+    // 请求日志（含耗时，慢请求一目了然）。
+    //
+    // 必须注册在 ExceptionHandlingMiddleware **外层**（即先于它注册）。
+    // 否则 BusinessException 会先冒泡穿过本中间件，记录下的是异常发生时的 500 与完整堆栈，
+    // 而客户端实际收到的是 ExceptionHandlingMiddleware 映射后的 404/403/409 —— 日志与事实不符，
+    // 且正常业务失败（重复邮箱、资源不存在等）会刷满 ERR，淹没真正的故障。
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} 响应 {StatusCode} 耗时 {Elapsed:0.0000} ms";
+
+        // 分级：5xx = ERR（真故障），4xx = WRN（业务/权限类可预期失败），其余 = INF
+        options.GetLevel = (httpContext, _, ex) =>
+            ex is not null ? LogEventLevel.Error
+            : httpContext.Response.StatusCode switch
+            {
+                >= 500 => LogEventLevel.Error,
+                >= 400 => LogEventLevel.Warning,
+                _ => LogEventLevel.Information,
+            };
+    });
+
     app.UseMiddleware<ExceptionHandlingMiddleware>();
 
     // 令牌桶限流（规则见 appsettings RateLimit 节，Redis 故障自动降级内存桶）
     app.UseMiddleware<RateLimitingMiddleware>();
-
-    // 请求日志（含耗时，慢请求一目了然）
-    app.UseSerilogRequestLogging(options =>
-    {
-        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} 响应 {StatusCode} 耗时 {Elapsed:0.0000} ms";
-    });
 
     app.UseCors("Frontend");
 
