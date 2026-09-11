@@ -7,16 +7,17 @@ import type { CollectionDto } from '@/types'
 
 const collections = ref<CollectionDto[]>([])
 const loading = ref(true)
-const errorMsg = ref('')
 
 async function load() {
   loading.value = true
-  errorMsg.value = ''
   try {
     collections.value = await getCollections()
   } catch (e) {
-    // 技术细节只进控制台；页面给中性提示，不暴露 HTTP 状态码等内部信息
-    errorMsg.value = e instanceof Error ? e.message : '加载失败'
+    // 加载失败按「空列表」呈现，与分类墙/标签墙等公开页保持一致：
+    // 技术细节只进控制台，页面不暴露 HTTP 状态码等内部信息，也不弹错误横幅。
+    // 注意：公开页的失败提示一旦做成横幅，就会把「服务未启动」演变成
+    // 「暂无专栏」不显示 —— 与本项目其他公开列表页的行为不一致。
+    collections.value = []
     console.error('[collections] 加载专栏列表失败：', e)
   } finally {
     loading.value = false
@@ -36,12 +37,10 @@ onMounted(load)
     </header>
 
     <div class="container list-container">
-      <p v-if="errorMsg" class="banner err">{{ errorMsg }}</p>
-
       <TaxonomySkeleton v-if="loading" :count="6" />
 
-      <!-- 加载失败时不再显示「暂无专栏」，否则会把服务故障误导成「真的没有内容」 -->
-      <p v-else-if="!errorMsg && collections.length === 0" class="empty">暂无专栏</p>
+      <!-- 与分类墙/标签墙一致：无数据显示「暂无」，加载失败也走这里（错误只进控制台） -->
+      <p v-else-if="collections.length === 0" class="empty">暂无专栏</p>
 
       <div v-else class="grid">
         <RouterLink
@@ -100,15 +99,6 @@ onMounted(load)
 
 .list-container {
   padding-bottom: var(--space-16);
-}
-
-.banner.err {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, #e35151 12%, transparent);
-  color: #e35151;
-  font: var(--text-body-sm);
-  margin-bottom: var(--space-4);
 }
 
 .empty {
