@@ -83,8 +83,26 @@ ERROR:  text search configuration "chinese" does not exist
 | **T14a** | **账号管理页面** | ✅ **已完成** | `views/AdminUserListView.vue`：列表 / 新建（即作者账号创建入口）/ 行内编辑角色与关联作者与启用状态 / 重置密码 / 停用。**且不给自己显示「停用」**，避免自锁。T1 的「管理员创建作者账号」至此闭环 |
 | **T14b** | **作者管理页面（Author 内容层）** | ✅ **已完成** | 后端补 `POST /api/authors`、`DELETE /api/authors/{id}`、`GET /api/authors/me`，并给 PUT 加归属校验（管理员可改任何人，作者只能改自己）。前端 `/admin/authors`（作者管理）与 `/me/profile`（作者个人资料）。见下方说明 |
 | **T15** | **专栏功能全链路** | ✅ **已完成** | 后端 `CollectionsController`（公开读 + Admin 写 + 文章编排 `PUT /{id}/posts`）；前端 `/collections`、`/collections/:slug`、`/admin/collections`（含编排面板）、编辑器「所属专栏」多选、文章详情专栏徽章。未发布专栏对匿名返回 404 |
+| **T16** | **两个登录页合并为单一 `/login`** | ✅ **已完成** | 后端两个角色专用端点合并为角色无关的 `/api/auth/login`（端点总数 48 → 47）；前端 `LoginView` 单一页面，登录后按 `role` 跳 `/admin` 或 `/me`；旧 `/admin/login` 保留为重定向。**根因是命名撞车**：`Author` 实体无法登录（无密码字段），能与「作者登录」混淆 |
+| **T17** | **业务异常被记成 `[ERR]` + 状态 500 + 完整堆栈** | ✅ **已修** | `UseSerilogRequestLogging` 原先注册在 `ExceptionHandlingMiddleware` **内层**，异常先穿过它，导致日志状态码与客户端实际收到的 404 不一致，且正常业务失败刷满错误日志。已改为注册在外层并用 `GetLevel` 分级（5xx=ERR / 4xx=WRN / 其他=INF）。**实测**：业务 404 → `[WRN] 响应 404`；停库造成的真故障 → `[ERR] 响应 500` |
+| **T18** | **文件接口把「不存在」的 404 缓存 24 小时** | ✅ **已修** | `[ResponseCache(Duration=86400)]` 标在 action 上，会给**所有**响应（含 404）加缓存头。后果：文件补齐或部署完成后，浏览器仍把 404 缓存一整天，首页 hero 一直空白，必须强刷。已改为仅在命中文件时手动下发 `Cache-Control`。**这个坑真实发生过**：本地误从 `bin/` 目录启动后端，`media/` 解析到空目录，图片 404 被浏览器缓存，即使改对目录后页面依旧不显示 |
+| **T19** | **`FileStorage:Root` 依赖进程工作目录（P1）** | `[待修]` | `Root = "media"` 由 `Path.GetFullPath` 按 **CWD** 解析（`LocalFileStorageService.cs:88`）。同一份二进制从项目目录启动能读到图片，从 `bin/Debug/net10.0/` 启动则全部 404。本地启动后端**必须以 `Blog.WebApi/` 为工作目录**。建议改为基于 `ContentRootPath` 或配置绝对路径 |
 
-**建议顺序**：~~T13~~ → ~~T14a~~ → ~~T15 专栏~~ → ~~T14b 作者管理~~（均已完成）→ **T12（搜索相关度排序）** → 原 objective 各项已全部落地，剩下是 P0 工程项（测试/CI/配置外置）与 T11 容器切换。
+**建议顺序**：~~T13~~ → ~~T14a~~ → ~~T15 专栏~~ → ~~T14b 作者管理~~ → ~~T16 登录页合并~~ → ~~T17/T18 日志与缓存修复~~（均已完成）→ **T19（存储根改为不依赖 CWD）** → **T12（搜索相关度排序）** → 原 objective 各项已全部落地，剩下是 P0 工程项（测试/CI/配置外置）与 T11 容器切换。
+
+> **T16 顺带澄清的模型问题**（用户提出）：`Author` **不能登录**，它只承载署名资料
+> （`Name/Email/Avatar/Bio`，没有 `PasswordHash`/`Role`）；登录的是 `User`（`role` 为
+> `Author` 或 `Admin`）。`User.AuthorId` 可选关联一个 `Author`。
+> 发文涉及**两个不同字段**：`Post.AuthorId`（署名，公开可见）与
+> `Post.CreatedByUserId`（归属，决定改/删权限，`PostService.cs:221-224` 明确只认后者）。
+> 原作者账号未关联 `Author` 时会回退到库中首个作者（`PostService.cs:334-338`）。
+
+> **T18 待确认项**：站点配置 `SiteConfig.HeroBackground` 指向一张
+> **6.57MB / 2048×2048** 的用户上传 PNG（`media/2026/09/83715b0f...png`），
+> 首页实际加载的就是它。它与 `src/assets/hero.png` 是**两张不同的图**：
+> 后者是站点配置为空时的兜底，已压缩为 `hero.webp`（227KB，2560×1440）。
+> 因为站点配置非空，**压缩兜底图对线上首屏没有任何效果**，首页仍旧下载 6.57MB。
+> 是否把这个上传件也压成 WebP 需用户确认（它是运行期数据，`media/` 已被 gitignore）。
 
 > **T14b 顺带清理的重复**：原 `/admin/profile`（博主资料）与新的 `/admin/authors` 职责重叠
 > （都在维护 `Author`），已统一到作者管理；`/admin/profile` 保留为重定向，侧边栏移除该入口，

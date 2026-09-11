@@ -755,7 +755,7 @@ sequenceDiagram
   participant DB as PostgreSQL
   participant R as Redis (可选黑名单)
 
-  C->>API: POST /api/auth/author/login {email, password}
+  C->>API: POST /api/auth/login {email, password}
   API->>DB: 按 Email 查 User（含 IsActive）
   API->>API: 慢哈希校验（恒定时间比较）
   alt 成功
@@ -882,7 +882,7 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 - 写操作并发控制：请求体带 `version`（int）
 - **认证**：受保护端点要求 `Authorization: Bearer <token>`
 
-### 7.2 现有端点 `[已实现]`（48 个）
+### 7.2 现有端点 `[已实现]`（47 个）
 
 | 控制器 | 行数 | 端点数 | 认证要求 |
 |---|---|---|---|
@@ -891,11 +891,14 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 | `CategoriesController` | 48 | 4 | 读公开；写 `Admin` |
 | `TagsController` | 48 | 4 | 读公开；写 `Admin` |
 | `AuthorsController` | 110 | 6 | 读公开；创建/删除 `Admin`；更新本人或 `Admin` |
-| `FilesController` | 62 | 2 | 上传 `ContentWriter`；读取公开 |
+| `FilesController` | 67 | 2 | 上传 `ContentWriter`；读取公开 |
 | `CollectionsController` | 115 | 7 | 读公开（未发布需 Admin）；写 `Admin` |
-| `AuthController` | 66 | 4 | 登录匿名；me/logout 需登录 |
+| `AuthController` | 59 | 3 | 登录匿名；me/logout 需登录 |
 | `UsersController` | 76 | 6 | **整个控制器仅 `Admin`** |
-| **合计** | **733** | **48** | |
+| **合计** | **731** | **47** | |
+
+> 合并记录：原 `/api/auth/author/login` 与 `/api/auth/admin/login` 两个端点已合并为
+> 角色无关的 `/api/auth/login`（前端登录页同时合并，见 docs/frontend.md）。端点总数 48 → 47。
 
 **Posts**（`Controllers/PostsController.cs`）：
 
@@ -947,7 +950,7 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 | 方法 | 路由 | 特性行 | 实现行 | 备注 |
 |---|---|---|---|---|
 | POST | `/api/files/upload` | 26-27 | 28-48 | multipart；`[RequestSizeLimit(50MB)]` |
-| GET | `/api/files/{**path}` | 50-51 | 52-61 | `[ResponseCache(86400)]`，支持 Range |
+| GET | `/api/files/{**path}` | 50 | 52-66 | **仅命中时**下发 `Cache-Control: public,max-age=86400`（404 不缓存，见 §8.2 文件存储），支持 Range |
 
 **Collections**（`Controllers/CollectionsController.cs`，T15 专栏）：
 
@@ -974,10 +977,13 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 
 | 方法 | 路由 | 权限 | 说明 |
 |---|---|---|---|
-| POST | `/api/auth/author/login` | 匿名 | 作者登录（仅 Author 角色可过） |
-| POST | `/api/auth/admin/login` | 匿名 | 管理员登录（仅 Admin 角色可过） |
+| POST | `/api/auth/login` | 匿名 | 登录。**不限定角色**，Admin 与 Author 共用；响应 `role` 决定前端去向 |
 | GET | `/api/auth/me` | 登录 | 当前用户信息（不含凭据） |
 | POST | `/api/auth/logout` | 登录 | 提升 `TokenVersion`，该账号所有旧 token 立即失效 |
+
+> 登录入口**不承担权限边界**：任何启用中的账号都能通过 `/api/auth/login` 拿到 token，
+> 但能做什么由 `AdminOnly` / `ContentWriter` 授权策略在具体接口上强制。
+> 因此不存在「用作者页登录就绕过管理员校验」的问题 —— 前端页面只是体验层。
 
 **Users**（`Controllers/UsersController.cs`，整个控制器 `[Authorize(Policy = "AdminOnly")]`）：
 
@@ -1122,6 +1128,28 @@ sequenceDiagram
 > **注意**：`BusinessException` 一律映射到 400（除 404）。新增的 4010/4030 由**认证/授权中间件**返回，
 > 不走 `BusinessException` 路径（`JwtBearer` 的 `OnChallenge` / `OnForbidden` 事件里写统一响应体）。
 
+#### 8.1.1 请求日志的中间件顺序 `[已修复]`
+
+`UseSerilogRequestLogging` **必须注册在 `ExceptionHandlingMiddleware` 外层**（即先于它注册）。
+
+早期顺序相反（异常处理在外、请求日志在内），后果有两个，都会造成**日志与事实不符**：
+
+| 症状 | 原因 |
+|---|---|
+| 业务 404 被记为 `[ERR] ... 响应 500` + 完整堆栈 | `BusinessException` 先冒泡穿过请求日志中间件，此刻响应码还是默认 500，且 `ex != null` 直接判为 Error |
+| 正常业务失败（重复邮箱、资源不存在）刷满 ERR | 同上，异常被当成未处理故障 |
+
+修复后分级（`Program.cs` 的 `options.GetLevel`）：
+
+| 情况 | 级别 | 记录的状态码 |
+|---|---|---|
+| 命中业务异常（404/400/409…） | `WRN` | 与客户端实际收到的一致 |
+| 真故障（5xx，如数据库不可用） | `ERR` | 500 |
+| 正常 | `INF` | 200 |
+
+实测对照（同一次 404 请求）：修复前 `[ERR] 响应 500` + 堆栈；修复后 `[WRN] 业务异常 4040` +
+`[WRN] HTTP GET /api/collections/... 响应 404 耗时 22.9 ms`，无堆栈。
+
 ### 8.2 文件存储
 
 | 项 | 值 | 依据 |
@@ -1130,7 +1158,20 @@ sequenceDiagram
 | 目录结构 | `{Root}/yyyy/MM/{guid:N}{ext}` | `LocalFileStorageService.cs:49-52` |
 | 扩展名白名单（11 种） | `.png .jpg .jpeg .gif .webp .svg .ico .mp4 .webm .pdf .zip` | `:13-17` |
 | 体积上限 | 应用层 10MB；请求体 50MB | `FilesController.cs:27` |
-| 读取 | `GET /api/files/{**path}`，缓存 86400s，支持 Range | `:50-61` |
+| 读取 | `GET /api/files/{**path}`，**仅命中时**下发 `Cache-Control: public,max-age=86400`，支持 Range | `FilesController.cs:50-66` |
+
+> **已修复的陷阱（缓存 404）**：早期把 `[ResponseCache(Duration=86400)]` 标在 action 上，
+> 该特性会给**同一 action 的所有响应**加缓存头，包括「文件不存在」的 404。
+> 后果：浏览器把 404 缓存一整天，文件补齐/部署完成后用户仍长时间看到空白背景，
+> 必须强刷才恢复。现在改为只在命中文件时手动设置 `Response.Headers.CacheControl`。
+
+> **陷阱（存储根是 CWD 相对路径）**：`FileStorage:Root = "media"` 由
+> `Path.GetFullPath` 按**进程当前工作目录**解析（`LocalFileStorageService.cs:88`）。
+> 因此同一份二进制在不同目录启动会读到不同的文件目录：
+> 从项目目录启动能读到 `Blog.WebApi/media/`，从 `bin/Debug/net10.0/` 启动则解析到
+> `bin/.../media/`（空）→ 已上传的图片全部 404。
+> 本地启动后端务必**以 `Blog.WebApi/` 为工作目录**；长期方案是把它改成
+> 基于 `ContentRootPath` 或配置绝对路径（P1 待办）。
 | 目录穿越防护 | `TryResolveSafePath` | `LocalFileStorageService.cs:54` |
 | 静态文件中间件 | **未启用**（有意为之） | `FilesController.cs:10` 注释 |
 
@@ -1173,7 +1214,7 @@ sequenceDiagram
 | Infrastructure | 本地文件存储（白名单 + 体积限制 + 防穿越） |
 | Infrastructure | 慢查询拦截（>500ms） |
 | Infrastructure | 迁移 + `HasData` 种子 |
-| WebApi | 9 控制器 / 48 端点 |
+| WebApi | 9 控制器 / 47 端点 |
 | WebApi | 全局异常 → HTTP 状态码映射 |
 | WebApi | Serilog 请求日志 + 滚动文件 |
 | WebApi | CORS 策略 |

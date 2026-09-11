@@ -201,8 +201,8 @@ flowchart TB
   PUB --> P7["collections → CollectionListView<br/>[已实现]"]
   PUB --> P8["collections/:slug → CollectionDetailView<br/>[已实现]"]
 
-  AUTH --> A1["login → AuthorLoginView<br/>[已决定]<br/>（无注册入口）"]
-  AUTH --> A3["admin/login → AdminLoginView<br/>[已决定]"]
+  AUTH --> A1["login → LoginView<br/>[已实现]<br/>（无注册入口，管理员与作者共用）"]
+  AUTH --> A3["admin/login → 重定向到 /login"]
 
   ME --> M1["'' → MyPostsView 我的文章/草稿箱<br/>[已决定]"]
   ME --> M2["posts/new → MyPostNewView<br/>[已决定]"]
@@ -241,12 +241,18 @@ flowchart TB
 **认证页** `[已决定]`
 
 > `[已实现]` **没有注册页**（T1）：作者账号由管理员创建。
-> 两个登录页共用 `components/auth/LoginForm.vue`，仅 `mode` 不同，并互带跳转链接。
+> **已合并为单一登录页**：原先 `/login`（作者）与 `/admin/login`（管理员）两个页面已合并为
+> `/login` → `LoginView.vue`，登录后按响应里的 `role` 跳转（`Admin` → `/admin`，其余 → `/me`）。
+> 旧路径 `/admin/login` 保留为重定向（转发 `returnUrl`）。
+>
+> 合并原因：两个页面登录的**都是 User 账号**，`Author` 实体没有密码、根本不能登录，
+> 「作者登录」这个说法与署名实体 `Author` 撞名，是团队反复误会的来源。
+> 页面分离也不提供任何额外安全性 —— 真正的权限边界在后端授权策略。
 
 | # | 路由 | 说明 | 状态 |
 |---|---|---|---|
-| 9 | `/login` | 作者登录 | `[已实现]` |
-| 10 | `/admin/login` | 管理员登录（**无注册入口**） | `[已实现]` |
+| 9 | `/login` | 统一登录（管理员与作者共用，登录后按 `role` 跳转；**无注册入口**） | `[已实现]` |
+| 10 | `/admin/login` | 重定向到 `/login`（保留旧链接可用） | `[已实现]` |
 
 **作者工作区** `[已实现]`
 
@@ -311,10 +317,10 @@ flowchart TB
 
 **关键注意事项**：
 
-1. `/admin/login` 与 `/login` 本身**不能**设 `requiresAuth`（否则死循环）
+1. `/login` 本身**不能**设 `requiresAuth`（否则死循环）；`/admin/login` 是同名重定向，无独立页面
 2. 守卫只做**前端体验**控制，**真正的安全边界在后端**。前端守卫可被绕过（改 JS 即可），
    因此所有受保护操作**必须**在后端再次校验
-3. 登录成功后跳回 `redirect` 参数指定的原页面，提升体验
+3. 登录成功后跳回 `returnUrl` 参数指定的原页面，提升体验
 
 ---
 
@@ -351,8 +357,9 @@ flowchart TB
 | Content-Type | 非 FormData 设 `application/json`；**FormData 不设**（浏览器生成 boundary） | 20-22 |
 | 网络异常 | throw `ApiError(-1, '网络异常…')` | 25-27 |
 | 响应解包 | 解析 `ApiResponse<T>`，`code !== 0` → throw `ApiError(code, message)` | 30-37 |
-| 非 JSON 兜底 | 429 专门文案，其他 `HTTP {status}` | 31-33 |
-| 便捷方法 | `get`（自动序列化 query）、`post`、`put`、`del`、`upload` | 40-71 |
+| 非 JSON 兜底 | 429 专门文案；404 → `ErrorCode.NotFound`；**其他一律中性文案「服务暂时不可用，请稍后重试」**，不含 HTTP 状态码 | 78-88 |
+| 便捷方法 | `get`（自动序列化 query）、`post`、`put`、`del`、`upload` | 93-124 |
+| `isNotFoundError(e)` | 判定「资源不存在」：业务码 4040 或裸 404，供视图区分「404 页」与「加载失败」 | 31-38 |
 
 `[已决定]` **需增加的认证相关能力**：
 
@@ -616,8 +623,7 @@ flowchart LR
 | `SearchModal` | `GET /api/posts/search?keyword=&page=1&pageSize=10` |
 | `SiteFooter` | `GET /api/site/stats`（经 store） |
 | `HeroSection` | 读 store |
-| `AuthorLoginView` | `[已决定]` `POST /api/auth/author/login` |
-| `AdminLoginView` | `[已决定]` `POST /api/auth/admin/login` |
+| `LoginView` / `LoginForm` | `[已实现]` `POST /api/auth/login`（角色无关，按响应 `role` 跳转） |
 | `MyPostsView` | `[已决定]` `GET /api/posts?includeUnpublished=true&mine=true` |
 | `MyProfileView` | `[已实现]` `GET /api/authors/me` + `PUT /api/authors/{id}` |
 | `AdminPostListView` | `GET /api/posts?includeUnpublished=true`；操作前 `GET /api/posts/{id}` 取 version；`POST .../publish`；`DELETE ...?version=` |
@@ -777,3 +783,4 @@ sequenceDiagram
 | F10 | 代理目标硬编码 | `vite.config.ts:18` | 无法按环境切换（P1-1） |
 | F11 | ~~分类样式缺失~~ **已修**：新增全局 `.category-badge`，与 `.tag-badge` 视觉可区分 | — | — |
 | F12 | 早期规划组件未创建且文档未更新 | `docs/`（已清理） | 已通过本轮文档重写消除 |
+| F13 | ~~错误页把服务故障当「不存在」并泄露 HTTP 状态码~~ **已修** | `http.ts` + `CollectionDetailView` / `PostDetailView` / `CollectionListView` | 兜底文案中性化；新增 `isNotFoundError` 区分真 404 与加载失败；失败页给中性文案 + 重试按钮，技术细节只进控制台 |

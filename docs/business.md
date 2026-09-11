@@ -149,85 +149,93 @@ flowchart TB
 
 > 图例：实线 = 已实现；虚线 = 已决定待实现。
 
-### 4.1 登录体系（前台 Author / 后台 User）
+### 4.1 登录体系（统一入口 + 角色分流）
 
-`[已决定]` 两套登录入口，同构 JWT 机制，靠 `role` claim 区分。
+`[已实现]` **单一登录入口**，同构 JWT 机制，靠 `role` claim 区分去向。
 
 ```mermaid
 flowchart TB
   subgraph Front["前台 / Front（面向作者）"]
-    FL["/login<br/>作者登录"]
+    FL["/login<br/>统一登录入口"]
     ME["/me<br/>我的文章 / 草稿箱 / 个人资料"]
   end
   subgraph Admin["后台 / Admin（面向管理者）"]
-    AL["/admin/login<br/>管理员登录"]
+    AL["/login<br/>同一入口"]
     AM["/admin/users<br/>账号管理<br/>（创建作者账号）"]
     AA["/admin/authors<br/>作者管理（内容）"]
     AP["/admin/posts<br/>全部文章"]
     AS["/admin/site<br/>站点配置"]
   end
 
-  A1["Author 账号<br/>（管理员创建）"] --> FL
-  A2["Admin 账号"] --> AL
-  FL --> L1["POST /api/auth/author/login"]
-  AL --> L3["POST /api/auth/admin/login"]
+  A1["Author 角色账号<br/>（管理员创建）"] --> FL
+  A2["Admin 角色账号"] --> AL
+  FL --> L1["POST /api/auth/login"]
+  AL --> L1
   L1 --> JWT["签发 JWT<br/>含 sub / role / exp"]
-  L3 --> JWT
-  JWT --> G{"前端路由守卫<br/>按 role 分流"}
+  JWT --> G{"前端按 role 分流"}
   G -->|"role=Author"| Front
   G -->|"role=Admin"| Admin
   AM -.->|"创建账号并指定 Author"| A1
 ```
 
-**为什么必须分成两套入口**：作者与管理员的生命周期与信任模型完全不同。
-作者账号由管理员发放、数量可控；管理员是运维者、数量固定且**绝不对外开放创建**。
-混在同一登录页会导致「注册即成为管理员」这类严重越权。
+> **术语前提（重要）**：`User` 是**登录账号**，`Author` 是**署名主体**。
+> `Author` 实体没有密码字段，**永远不能登录**。
+> 「role=Author 的 User 账号」才是登录者，与署名实体 `Author` 是两个不同的东西。
 
-即便作者注册不开放（T1），两个入口仍需分开：它们的**登录后落地页与错误提示**都不同
-（作者进 `/me`，管理员进 `/admin`），且未来若开放受控注册，也只会开放作者那一个入口。
+**为什么合并为一个入口**（早期结论是「必须分两套入口」，已推翻）：
 
-**前端落地方式**：单一 SPA + 角色路由守卫（`[已决定]`，理由见 [tech.md](./tech.md) §2.3）。
+1. 两个登录页登录的都是 `User` 账号，页面分离**不提供任何安全性**；
+   真正的权限边界在后端 `AdminOnly` / `ContentWriter` 授权策略。
+2. 「混在一起会导致注册即管理员」不成立：**本站没有注册端点**（T1），
+   账号一律由管理员在 `/admin/users` 创建。
+3. 分两个页面唯一的实际差异是**登录后落地页**，这完全可以在登录成功后按 `role` 决定。
 
-#### 作者登录时序
+**前端落地方式**：单一 SPA + 角色路由守卫（理由见 [tech.md](./tech.md) §2.3）。
+旧路径 `/admin/login` 保留为重定向。
 
-> `[已决定]` **没有注册流程**（T1）。作者账号由管理员在 `/admin/users` 创建，
+#### 登录时序
+
+> `[已实现]` **没有注册流程**（T1）。账号由管理员在 `/admin/users` 创建，
 > 因此本节只有登录，没有注册。
 
 ```mermaid
 sequenceDiagram
-  participant A as 作者
+  participant A as 用户（作者或管理员）
   participant FE as 前端
-  participant API as POST /api/auth/author/login
+  participant API as POST /api/auth/login
   participant DB as PostgreSQL
 
   A->>FE: 填写邮箱 / 密码
-  FE->>API: POST /api/auth/author/login
+  FE->>API: POST /api/auth/login
   API->>DB: 按邮箱查 User（含 IsActive）
   API->>API: PBKDF2 校验（恒定时间比较）
   alt 凭据正确且账号启用
     API->>DB: 更新 LastLoginAt
-    API-->>FE: JWT + 过期时间
-    FE->>FE: 存入 localStorage，跳转 /me
+    API-->>FE: JWT + 过期时间 + role
+    FE->>FE: 存入 localStorage；role=Admin→/admin，其余→/me
   else 失败
-    API-->>FE: 4001 统一提示「邮箱或密码错误」
+    API-->>FE: 4010 统一提示「邮箱或密码错误」
   end
 ```
 
 > **安全要点**：登录失败时**不要**区分「邮箱不存在」与「密码错误」，统一提示，避免账号枚举攻击。
 
-#### 管理员登录
+#### `[已废弃]` 分角色的两个登录端点
 
-同构，但走独立端点 `/api/auth/admin/login`。
+早期设计为 `/api/auth/author/login`（仅 Author）与 `/api/auth/admin/login`（仅 Admin）。
+**已废弃并移除**，合并为 `/api/auth/login`。
 
 | 项 | 说明 |
 |---|---|
-| 注册端点 | **不存在**（作者与管理员的创建都只能由管理员在后台发起） |
+| 注册端点 | **不存在**（所有账号的创建都只能由管理员在后台发起） |
 | 账号来源 | 已有管理员创建，或部署时由初始化流程创建（**密码不可硬编码进迁移**） |
-| 与作者登录的差异 | 独立端点便于分别做限流与审计；登录后落地 `/admin` |
+| 登录入口是否限角色 | **不限**。入口只负责认证身份，授权由具体接口的策略负责 |
+| 落地页 | 由响应中的 `role` 决定（Admin→`/admin`，其余→`/me`） |
 
-> **为什么不让管理员用同一个 `/api/auth/login`**：分流端点可以在**限流规则**与
-> **审计日志**上分别处理（管理员登录失败是更严重的信号），也避免「管理员误入作者入口」
-> 造成的困惑与额外的前端判断。
+> 废弃原因：分流端点当初被认为便于**分别限流与审计**，但实测收益很小
+> （都是同一个 `RateLimit` 规则维度），而代价是命名歧义与两份重复页面。
+> 若将来确实需要对管理员登录失败做更强的风控，应在**同一端点内按 `role` 分支**处理，
+> 而不是重新拆成两个页面。
 
 #### 会话生命周期
 
@@ -423,8 +431,8 @@ sequenceDiagram
 | 标签管理 | `/admin/tags` | `[已实现]` |
 | 网站配置 | `/admin/site` | `[已实现]` |
 | 单作者资料（现有） | `/admin/profile` | `[需调整]` 按新模型并入作者管理 |
-| **管理员登录** | `/admin/login` | `[已决定]` |
-| **账号管理（`User`）** | `/admin/users` | `[已决定]` **含创建作者账号**（T1 的唯一入口） |
+| **统一登录** | `/login` | `[已实现]` 管理员与作者共用（旧 `/admin/login` 重定向到此） |
+| **账号管理（`User`）** | `/admin/users` | `[已实现]` **含创建作者账号**（T1 的唯一入口） |
 | **作者管理（`Author` 内容）** | `/admin/authors` | `[已决定]` |
 | **专栏管理** | `/admin/collections` | `[已实现]`（含文章编排：勾选、排序、保存） |
 
@@ -604,7 +612,7 @@ stateDiagram-v2
 
 | 功能 | 路由 |
 |---|---|
-| 作者登录 | `/login` |
+| 登录（作者与管理员共用） | `/login` |
 | 我的文章（含草稿箱） | `/me` |
 | 写文章 | `/me/posts/new` |
 | 编辑我的文章 | `/me/posts/:id/edit` |
@@ -621,8 +629,8 @@ stateDiagram-v2
 | 分类管理 | `/admin/categories` | `[已实现]` |
 | 标签管理 | `/admin/tags` | `[已实现]` |
 | 网站配置 | `/admin/site` | `[已实现]` |
-| **管理员登录** | `/admin/login` | `[已决定]` |
-| **账号管理** | `/admin/users` | `[已决定]` |
+| **统一登录** | `/login` | `[已实现]` 与作者端同一入口 |
+| **账号管理** | `/admin/users` | `[已实现]` |
 | **作者管理** | `/admin/authors` | `[已决定]` |
 | **专栏管理** | `/admin/collections` | `[已实现]`（含文章编排：勾选、排序、保存） |
 
