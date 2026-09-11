@@ -237,18 +237,20 @@ sequenceDiagram
 
 中间件顺序（**顺序敏感**）：
 
-| 序 | 中间件 | 当前行号 | 变更 |
+| 序 | 中间件 | 行号 | 为什么在这个位置 |
 |---|---|---|---|
-| 1 | `ExceptionHandlingMiddleware` | `Program.cs:52` | 保持 |
-| 2 | `RateLimitingMiddleware` | `:55` | 保持 |
-| 3 | `UseSerilogRequestLogging` | `:58` | 保持 |
-| 4 | `UseCors("Frontend")` | `:63` | 保持 |
-| 5 | `UseAuthentication()` | — | **`[已决定]` 新增（必须在 UseAuthorization 之前）** |
-| 6 | `UseAuthorization()` | `:65` | 当前是空操作（无认证方案、无 `[Authorize]`） |
-| 7 | `MapControllers` | `:67` | 保持 |
+| 1 | `UseSerilogRequestLogging` | `Program.cs:140` | **必须最外层**：要记录「最终」响应码。放在异常处理内层会把业务 404 记成 500 + 堆栈（详见 §8.1.1） |
+| 2 | `ExceptionHandlingMiddleware` | `:155` | 在业务中间件之前，才能兜住其后的所有异常并映射成统一响应体 |
+| 3 | `RateLimitingMiddleware` | `:158` | 早于业务处理，避免被限流的请求浪费后续开销 |
+| 4 | `UseCors("Frontend")` | `:160` | 需在认证前，否则预检请求拿不到 CORS 头 |
+| 5 | `UseAuthentication()` | `:162` | **必须在 `UseAuthorization()` 之前**：否则 `[Authorize]` 完全失效（这是曾经真实存在的 P0 缺陷）。它负责解析 JWT 并填充 `HttpContext.User` |
+| 6 | `CurrentUserResolutionMiddleware` | `:166` | 依赖第 5 步填好的 `ClaimsPrincipal`，再校验 `TokenVersion` 并写入 `HttpContext.Items` 供 `ICurrentUser` 读取 |
+| 7 | `UseAuthorization()` | `:168` | 依赖第 5/6 步的身份，做 `AdminOnly` / `ContentWriter` 策略判定 |
+| 8 | `MapControllers` / `MapGet("/")` | `:170-171` | 终端 |
 
-> **当前缺陷**：`UseAuthorization()` 之前**没有** `UseAuthentication()`，且未注册认证方案
-> → 该调用完全无效，控制器的 `[Authorize]` 即使加上也不会生效。这是 P0 修复项。
+> **顺序口诀**：日志最外 → 异常 → 限流 → CORS → 认证 → 当前用户 → 授权 → 终端。
+> 任何「认证必须在授权之前」这类顺序约束都应记在本表，不要只写在某一行代码上方的注释里
+> （内联注释容易在重构时被顺手删掉，这条约束一旦丢失，`[Authorize]` 会静默失效）。
 
 ---
 

@@ -159,7 +159,6 @@ try
 
     app.UseCors("Frontend");
 
-    // 认证必须在授权之前：否则 [Authorize] 完全失效（这正是本次修复的 P0 缺陷之一）
     app.UseAuthentication();
 
     // 解析并校验登录用户（含 TokenVersion 校验），结果放入 HttpContext.Items 供 ICurrentUser 读取。
