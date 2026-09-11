@@ -1,15 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { adminLogin, authorLogin } from '@/api/auth'
+import { login } from '@/api/auth'
 import { ApiError, ErrorCode } from '@/api/http'
-
-const props = defineProps<{
-  /** 作者登录 or 管理员登录 */
-  mode: 'author' | 'admin'
-}>()
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -20,12 +15,9 @@ const showPassword = ref(false)
 const submitting = ref(false)
 const errorMsg = ref('')
 
-const isAdmin = computed(() => props.mode === 'admin')
-const title = computed(() => (isAdmin.value ? '管理员登录' : '作者登录'))
-const subtitle = computed(() =>
-  isAdmin.value ? '管理站点配置、账号与全部内容' : '撰写与管理你自己的文章',
-)
-const submitLabel = computed(() => (isAdmin.value ? '登录后台' : '登录'))
+const title = '登录'
+// 登录前无法知道账号角色，因此副标题不区分身份
+const subtitle = '登录后进入你的创作工作台或管理后台'
 
 async function onSubmit() {
   errorMsg.value = ''
@@ -38,7 +30,7 @@ async function onSubmit() {
   submitting.value = true
   try {
     const payload = { email: email.value.trim(), password: password.value }
-    const res = isAdmin.value ? await adminLogin(payload) : await authorLogin(payload)
+    const res = await login(payload)
     auth.setSession(res)
 
     // 登录成功回到来源页；没有来源页时按角色进各自首页
@@ -49,7 +41,7 @@ async function onSubmit() {
       await router.replace({ name: res.role === 'Admin' ? 'admin-posts' : 'my-posts' })
     }
   } catch (e) {
-    // 后端对「账号不存在/密码错误/角色不符」统一返回 4010，不区分原因（防账号枚举）
+    // 后端对「账号不存在/密码错误」统一返回 4010，不区分原因（防账号枚举）
     if (e instanceof ApiError && e.code === ErrorCode.Unauthorized) {
       errorMsg.value = '邮箱或密码错误'
     } else {
@@ -109,24 +101,17 @@ async function onSubmit() {
       </label>
 
       <button type="submit" class="btn-primary" :disabled="submitting">
-        {{ submitting ? '登录中...' : submitLabel }}
+        {{ submitting ? '登录中...' : '登录' }}
       </button>
 
       <footer class="auth-foot">
-        <template v-if="isAdmin">
-          <span class="muted">作者请走</span>
-          <RouterLink to="/login" class="link">作者登录</RouterLink>
-        </template>
-        <template v-else>
-          <span class="muted">管理员请走</span>
-          <RouterLink to="/admin/login" class="link">后台登录</RouterLink>
-        </template>
-        <span class="dot">·</span>
         <RouterLink to="/" class="link">返回首页</RouterLink>
       </footer>
 
-      <!-- 按 T1 决策没有注册页：作者账号由管理员在后台创建 -->
-      <p class="hint">没有账号？作者账号由管理员在「账号管理」中创建后发放。</p>
+      <!-- 按 T1 决策没有注册页：账号由管理员在后台创建 -->
+      <p class="hint">
+        没有账号？账号由管理员在「账号管理」中创建后发放。管理员与作者使用同一个登录入口。
+      </p>
     </form>
   </div>
 </template>

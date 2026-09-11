@@ -8,14 +8,14 @@ import type { AuthUser, LoginRequest, LoginResponse } from '@/types'
  * 因此这里只有登录、注销与获取当前用户。
  */
 
-/** 作者登录（仅 Author 角色可通过） */
-export function authorLogin(payload: LoginRequest): Promise<LoginResponse> {
-  return post<LoginResponse>('/api/auth/author/login', payload)
-}
-
-/** 管理员登录（仅 Admin 角色可通过） */
-export function adminLogin(payload: LoginRequest): Promise<LoginResponse> {
-  return post<LoginResponse>('/api/auth/admin/login', payload)
+/**
+ * 登录。管理员与作者共用同一个端点，响应中的 role 决定登录后去向。
+ *
+ * 注意：「作者」在这里指 role=Author 的**账号**（User），
+ * 与署名实体 Author 是两回事 —— Author 没有密码、不能登录。
+ */
+export function login(payload: LoginRequest): Promise<LoginResponse> {
+  return post<LoginResponse>('/api/auth/login', payload)
 }
 
 /** 当前登录用户 */

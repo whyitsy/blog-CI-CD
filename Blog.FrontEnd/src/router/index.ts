@@ -33,17 +33,17 @@ const router = createRouter({
     },
 
     // 认证页：极简独立布局（不套 NavBar/Footer/AdminLayout）
+    // 管理员与作者共用同一个登录页，登录后按返回的 role 跳转
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/views/auth/AuthorLoginView.vue'),
+      component: () => import('@/views/auth/LoginView.vue'),
       meta: { guestOnly: true },
     },
+    // 旧的后台登录页已并入 /login，保留路径并转发查询参数（returnUrl），避免旧链接失效
     {
       path: '/admin/login',
-      name: 'admin-login',
-      component: () => import('@/views/auth/AdminLoginView.vue'),
-      meta: { guestOnly: true },
+      redirect: (to) => ({ name: 'login', query: to.query }),
     },
 
     // 作者工作区：需要登录，Admin 也可进入（便于帮作者处理）
@@ -105,8 +105,9 @@ router.beforeEach((to) => {
   if (!to.meta.requiresAuth) return true
 
   if (!auth.isAuthenticated) {
+    // 只有一个登录页：无论是 /admin 还是 /me 都回到它，登录后按角色落地
     return {
-      name: to.path.startsWith('/admin') ? 'admin-login' : 'login',
+      name: 'login',
       query: { returnUrl: to.fullPath },
     }
   }

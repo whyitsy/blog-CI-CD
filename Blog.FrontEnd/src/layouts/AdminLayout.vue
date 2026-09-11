@@ -18,7 +18,7 @@ async function onLogout() {
     /* 请求失败也要清理本地，避免登不出去 */
   }
   auth.clear()
-  await router.replace({ name: 'admin-login' })
+  await router.replace({ name: 'login' })
 }
 
 interface AdminNavItem {

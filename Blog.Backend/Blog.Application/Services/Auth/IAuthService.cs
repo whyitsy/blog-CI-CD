@@ -1,16 +1,14 @@
 namespace Blog.Application.Services.Auth
 {
-    /// <summary>登录与登出。作者与管理员走不同端点，但共用同一套 JWT 机制</summary>
+    /// <summary>登录与登出。管理员与作者共用同一套 JWT 机制与同一个登录入口</summary>
     public interface IAuthService
     {
         /// <summary>
-        /// 作者登录。角色必须是 Author（Admin 走 <see cref="AdminLoginAsync"/>）。
+        /// 登录。不限定角色：管理员与作者共用此入口，调用方按返回的 Role 决定去向。
         /// 凭据错误统一返回「邮箱或密码错误」，不区分原因，防账号枚举。
+        /// 真正区分权限的是授权策略（AdminOnly / ContentWriter），不是登录入口。
         /// </summary>
-        Task<LoginResponse> AuthorLoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
-
-        /// <summary>管理员登录。角色必须是 Admin</summary>
-        Task<LoginResponse> AdminLoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
+        Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>当前登录用户信息</summary>
         Task<CurrentUserDto> GetCurrentAsync(CancellationToken cancellationToken = default);

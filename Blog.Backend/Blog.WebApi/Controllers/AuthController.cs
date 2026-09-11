@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Blog.WebApi.Controllers
 {
     /// <summary>
-    /// 认证：作者与管理员分两个登录端点。
+    /// 认证：管理员与作者共用同一个登录端点，登录后由前端按返回的 Role 决定去向。
     ///
     /// **没有注册端点**：按 T1 决策，作者账号由管理员在 /api/users 创建，
     /// 管理员账号由已有管理员创建（见 docs/tech.md §2.3）。
@@ -22,23 +22,16 @@ namespace Blog.WebApi.Controllers
             _auth = auth;
         }
 
-        /// <summary>作者登录。仅 Author 角色可通过</summary>
-        [HttpPost("author/login")]
+        /// <summary>
+        /// 登录。不限定角色，Admin 与 Author 共用（登录入口不承担权限边界，
+        /// 权限由 AdminOnly / ContentWriter 授权策略在具体接口上强制）。
+        /// </summary>
+        [HttpPost("login")]
         [AllowAnonymous]
-        public async Task<ApiResponse<LoginResponse>> AuthorLogin(
+        public async Task<ApiResponse<LoginResponse>> Login(
             [FromBody] LoginRequest request, CancellationToken cancellationToken)
         {
-            var result = await _auth.AuthorLoginAsync(request, cancellationToken);
-            return ApiResponse<LoginResponse>.Ok(result);
-        }
-
-        /// <summary>管理员登录。仅 Admin 角色可通过</summary>
-        [HttpPost("admin/login")]
-        [AllowAnonymous]
-        public async Task<ApiResponse<LoginResponse>> AdminLogin(
-            [FromBody] LoginRequest request, CancellationToken cancellationToken)
-        {
-            var result = await _auth.AdminLoginAsync(request, cancellationToken);
+            var result = await _auth.LoginAsync(request, cancellationToken);
             return ApiResponse<LoginResponse>.Ok(result);
         }
 

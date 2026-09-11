@@ -31,29 +31,20 @@ namespace Blog.Application.Services.Auth
             _uow = uow;
         }
 
-        public Task<LoginResponse> AuthorLoginAsync(LoginRequest request, CancellationToken cancellationToken = default) =>
-            LoginAsync(request, UserRole.Author, cancellationToken);
-
-        public Task<LoginResponse> AdminLoginAsync(LoginRequest request, CancellationToken cancellationToken = default) =>
-            LoginAsync(request, UserRole.Admin, cancellationToken);
-
-        private async Task<LoginResponse> LoginAsync(LoginRequest request, UserRole requiredRole, CancellationToken cancellationToken)
+        public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
                 throw new BusinessException("邮箱与密码不能为空", ErrorCodes.InvalidArgument);
 
             var user = await _users.GetByEmailAsync(request.Email, cancellationToken);
 
-            // 统一失败提示：不区分「账号不存在」「密码错误」「角色不符」，防账号枚举与角色探测。
+            // 统一失败提示：不区分「账号不存在」「密码错误」，防账号枚举。
             // 注意：即使 user 为 null 也走一次哈希校验的等价开销是可选的加固，这里为简洁直接返回。
             if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
                 throw new BusinessException("邮箱或密码错误", ErrorCodes.Unauthorized);
 
             if (!user.IsActive)
                 throw new BusinessException("账号已被停用，请联系管理员", ErrorCodes.Unauthorized);
-
-            if (user.Role != requiredRole)
-                throw new BusinessException("邮箱或密码错误", ErrorCodes.Unauthorized);
 
             // 迭代次数提升后，登录成功时静默升级哈希参数
             if (_passwordHasher.NeedsRehash(user.PasswordHash))
