@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useSiteStore } from '@/stores/site'
 import SocialIcon from '@/components/common/SocialIcon.vue'
-import heroBg from '@/assets/hero.png'
+import heroBg from '@/assets/hero.webp'
 
 const site = useSiteStore()
 
