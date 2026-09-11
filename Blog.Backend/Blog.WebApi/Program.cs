@@ -7,6 +7,7 @@ using Blog.Domain.Entities;
 using Blog.Infrastructure;
 using Blog.Infrastructure.Persistence;
 using Blog.Infrastructure.Security;
+using Blog.WebApi.HealthChecks;
 using Blog.WebApi.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -124,6 +125,9 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
+    // 健康检查：对外只回 Healthy / Unhealthy，详情写日志（见 HealthChecks/HealthCheckSetup.cs）。
+    builder.Services.AddBlogHealthChecks();
+
     var app = builder.Build();
 
     if (app.Environment.IsDevelopment())
@@ -170,6 +174,9 @@ try
     app.MapControllers();
     app.MapGet("/", () => Results.Ok(new { name = "Blog API", status = "running" }));
 
+    // /health：容器编排与负载均衡用的健康探针（匿名可访问，响应体不含内部细节）
+    app.MapBlogHealthChecks();
+
     // 启动时自动应用迁移（种子数据由 HasData 保证）
     using (var scope = app.Services.CreateScope())
     {
@@ -204,3 +211,9 @@ internal static class UnifiedJsonOptions
 {
     public static readonly JsonSerializerOptions Value = new(JsonSerializerDefaults.Web);
 }
+
+// 集成测试用 WebApplicationFactory<Program> 启动真实宿主，需要顶层语句生成的 Program 可见。
+// 用 InternalsVisibleTo 而不是 `public partial class Program;`——后者会**再声明一个空的 Program 类**，
+// 与顶层语句生成的 Program 冲突，导致工厂拿到空入口、报 "no web application was configured"。
+// 授权见 Blog.WebApi.csproj 的 AssemblyAttribute。
+

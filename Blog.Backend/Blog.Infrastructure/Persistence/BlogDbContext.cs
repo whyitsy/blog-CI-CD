@@ -235,7 +235,11 @@ namespace Blog.Infrastructure.Persistence
                 Id = DefaultAuthorId,
                 Name = "kky",
                 Email = "kky@example.com",
-                Avatar = "/media/avatar-default.png",
+                // 默认头像。注意两点：
+                //   1. 必须走文件接口 /api/files/**（后端不提供 /media/ 静态路由）
+                //   2. 该文件位于 FileStorage:Root（media/）下，而 media/ 是运行期目录、已被 gitignore，
+                //      因此**全新克隆的仓库里不存在这个文件**，需要手工放入（见 docs/01 §3.2）
+                Avatar = "/api/files/avatar-default.webp",
                 Bio = "coding slayer",
                 CreatedAt = now,
                 IsDeleted = false,

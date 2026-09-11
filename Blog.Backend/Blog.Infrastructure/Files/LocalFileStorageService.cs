@@ -83,7 +83,9 @@ namespace Blog.Infrastructure.Files
 
         public Task<(Stream Stream, string ContentType)?> GetAsync(string relativePath, CancellationToken cancellationToken = default)
         {
-            if (!TryResolveSafePath(relativePath, out var fullPath) || !File.Exists(fullPath))
+            // 先查运行期上传目录；未命中再查**只读种子目录**（默认头像等随仓库分发的资源）。
+            // 两个根目录都走同一套路径穿越校验，种子目录不会成为绕过点。
+            if (!TryResolveExistingFile(relativePath, out var fullPath))
                 return Task.FromResult<(Stream, string)?>(null);
 
             var extension = Path.GetExtension(fullPath);
@@ -93,20 +95,48 @@ namespace Blog.Infrastructure.Files
             return Task.FromResult<(Stream, string)?>((stream, contentType));
         }
 
-        public bool TryResolveSafePath(string relativePath, out string fullPath)
+        /// <summary>
+        /// 依次在「上传根目录 → 种子根目录」中查找文件。
+        /// 文件必须已存在；不存在的路径一律返回 false（调用方据此返回 404）。
+        /// </summary>
+        private bool TryResolveExistingFile(string relativePath, out string fullPath)
+        {
+            if (TryResolveSafePath(relativePath, out fullPath) && File.Exists(fullPath))
+                return true;
+
+            if (!string.IsNullOrWhiteSpace(_options.SeedRoot) &&
+                TryResolveSafePathIn(_options.SeedRoot, relativePath, out fullPath) &&
+                File.Exists(fullPath))
+                return true;
+
+            fullPath = string.Empty;
+            return false;
+        }
+
+        public bool TryResolveSafePath(string relativePath, out string fullPath) =>
+            TryResolveSafePathIn(_options.Root, relativePath, out fullPath);
+
+        /// <summary>
+        /// 在指定根目录下解析相对路径，并做目录穿越防护。
+        /// 拒绝 `..` 与绝对路径，且解析后的绝对路径必须仍在根目录内。
+        /// </summary>
+        private static bool TryResolveSafePathIn(string root, string relativePath, out string fullPath)
         {
             fullPath = string.Empty;
             if (string.IsNullOrWhiteSpace(relativePath))
+                return false;
+            if (string.IsNullOrWhiteSpace(root))
                 return false;
 
             // 防目录穿越：拒绝 .. 与绝对路径
             if (relativePath.Contains("..", StringComparison.Ordinal) || Path.IsPathRooted(relativePath))
                 return false;
 
-            var root = Path.GetFullPath(_options.Root);
-            var candidate = Path.GetFullPath(Path.Combine(root, relativePath));
+            var rootFull = Path.GetFullPath(root);
+            var candidate = Path.GetFullPath(Path.Combine(rootFull, relativePath));
 
-            if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            // 必须严格位于根目录之下（用分隔符界定，避免 /media-seed 被 /media 前缀匹配）
+            if (!candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 return false;
 
             fullPath = candidate;
@@ -119,8 +149,14 @@ namespace Blog.Infrastructure.Files
     {
         public const string SectionName = "FileStorage";
 
-        /// <summary>存储根目录（相对工作目录或绝对路径）</summary>
+        /// <summary>运行期上传目录（相对工作目录或绝对路径）。**可写**。</summary>
         public string Root { get; set; } = "media";
+
+        /// <summary>
+        /// 只读种子资源目录（相对工作目录或绝对路径），用于随仓库分发的默认图片。
+        /// 读取时作为 <see cref="Root"/> 未命中后的回退；**不参与上传写入**。为空则禁用回退。
+        /// </summary>
+        public string SeedRoot { get; set; } = "media-seed";
 
         /// <summary>单文件大小上限（字节），默认 10MB</summary>
         public long MaxFileSize { get; set; } = 10 * 1024 * 1024;

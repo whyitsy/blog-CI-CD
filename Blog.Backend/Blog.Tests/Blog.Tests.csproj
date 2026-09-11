@@ -5,6 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!--
+      xUnit v3 的测试工程需要入口点，但**不能**用 SDK 自动生成的那个：
+      它会与 Blog.WebApi 顶层语句生成的 Program 同名，使
+      WebApplicationFactory<Program> 解析到错误的类型。因此改为：
+        - 关掉自动生成（GenerateProgramFile=false）
+        - 由 TestEntryPoint.cs 提供自己的 Main
+    -->
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +20,44 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!-- 单元测试的替身（Mock）框架 -->
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <!-- 集成测试：用真实宿主 + 真实 PostgreSQL 跑端到端语义（权限、草稿保护、乐观锁） -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <!--
+      显式对齐 EF Core Relational 到解决方案使用的版本。
+      Microsoft.AspNetCore.Mvc.Testing 10.0.11 会传递引入 EF Core Relational 10.0.4，
+      与 Blog.Infrastructure 的 10.0.11 冲突：编译期警告 MSB3277，
+      运行期则因加载到 10.0.4 而找不到 10.0.11 的程序集，宿主启动直接失败
+      （表现为 WebApplicationFactory 报 "The server has not been started..."）。
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
+  </ItemGroup>
+
+  <!--
+    集成测试要在进程内启动真实 WebApi 宿主，因此测试工程必须拿到 ASP.NET Core 共享框架。
+    Blog.Tests 用的是普通 Microsoft.NET.Sdk（不是 Web SDK），不显式声明的话
+    运行时会因为加载不到 Microsoft.AspNetCore.Mvc.Core 等程序集而启动失败，
+    报 "The server has not been started or no web application was configured"。
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    WebApplicationFactory 默认按「解决方案根」定位被测应用的内容根，
+    它只认传统的 .sln 文件名。本项目用的是较新的 **.slnx**，找不到就报
+    "Solution root could not be located using application root ..."，
+    表现为创建客户端时抛 "The server has not been started or no web application was configured"。
+    这里直接声明内容根，跳过自动查找。
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryContentRootAttribute">
+      <_Parameter1>Blog.WebApi</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\Blog.WebApi\</_Parameter2>
+      <_Parameter3>Blog.WebApi.csproj</_Parameter3>
+      <_Parameter4>0</_Parameter4>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
@@ -20,6 +66,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Blog.Infrastructure\Blog.Infrastructure.csproj" />
+    <!-- 集成测试需要 Program（WebApplicationFactory<Program>），且 WebApi 传递引用 Infrastructure -->
+    <ProjectReference Include="..\Blog.WebApi\Blog.WebApi.csproj" />
   </ItemGroup>
 
 </Project>

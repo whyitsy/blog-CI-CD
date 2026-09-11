@@ -289,8 +289,8 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 
 **响应 `data`**：`PagedResult<PostCardDto>`
 
-> **当前限制**：结果按**发布时间倒序**，没有相关度排序（`ts_rank` 翻译受限）。
-> 详见 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §3。
+> **结果按相关度排序**（`ts_rank`，标题权重高于正文；同分按发布时间倒序）。
+> 实现说明见 [03-后端设计.md](./03-后端设计.md) §7.4。
 >
 > **限流**：此路径命中 `search` 规则（容量 20，速率 2/秒），
 > 是全站最严格的限流规则。
@@ -811,8 +811,18 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | FilesController | 2 |
 | **合计** | **47** |
 
-另有根路径 `GET /`（返回 `{ name: "Blog API", status: "running" }`），
-不计入业务端点。
+另有：
+
+| 端点 | 说明 |
+|---|---|
+| `GET /` | 存活探针，返回 `{ name: "Blog API", status: "running" }`（只证明进程在，**不检查依赖**） |
+| `GET /health` | 健康检查，**对外只返回 `Healthy` / `Unhealthy` 纯文本**（200 / 503），详情只写日志 |
+
+`/health` 的检查项：PostgreSQL 连通性、`zhparser` 扩展与 `chinese` 检索配置是否真的可用
+（会实际跑一次 `to_tsvector('chinese', ...)`）、迁移是否全部应用、Redis 连通性
+（仅当 `Cache:Provider = Redis` 时视为必需）。
+实现见 `Blog.WebApi/HealthChecks/HealthCheckSetup.cs`，设计说明见
+[03-后端设计.md](./03-后端设计.md) §11.6。
 
 ---
 

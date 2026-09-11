@@ -22,8 +22,36 @@
     <ProjectReference Include="..\Blog.Infrastructure\Blog.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!--
+    让集成测试能看到顶层语句生成的 internal Program 类型
+    （WebApplicationFactory<Program> 需要它）。
+    不要用 `public partial class Program;`：那会再声明一个空 Program 类，
+    与顶层语句生成的 Program 冲突，工厂会拿到空入口并报
+    "The server has not been started or no web application was configured"。
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Blog.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <Folder Include="Controllers\" />
+  </ItemGroup>
+
+  <!--
+    种子随附文件（只读、入库）随构建复制到输出目录。
+
+    为什么要这一步：应用的**工作目录是 bin/<Config>/<Tfm>**（它是 exe 所在处），
+    而 FileStorage:Root 是相对路径，指向的是输出目录下的 media/ —— 不是项目里的 media/。
+    项目里的 media/ 是**运行期上传目录**（已被 gitignore），不放种子文件。
+
+    因此仓库里跟踪一份 media-seed/（只读种子资源），构建时复制到输出目录，
+    由 FileStorage:SeedRoot 指向它作为**只读回退**。
+    这样全新克隆的仓库也能直接拿到默认头像，无需手工拷贝任何文件。
+  -->
+  <ItemGroup>
+    <Content Include="media-seed\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 构建前杀掉运行中的 Blog.WebApi，避免它锁住输出目录里的 DLL 导致 copy 失败 -->
