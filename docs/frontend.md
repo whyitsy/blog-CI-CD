@@ -751,7 +751,7 @@ sequenceDiagram
 | P1-8 | 首屏主题闪烁修复 | `<head>` 内联脚本读取 localStorage | 低 | 低 |
 | P1-9 | 搜索弹窗可访问性（焦点陷阱 + Esc） | 无焦点管理 | 低 | 低 |
 | P1-10 | 统一 loading/error 组件 | 13 个视图重复实现（F4） | 低—中 | 中：改动面广 |
-| P1-11 | 前端测试（Vitest + Playwright） | 当前零测试 | 中—高 | 低（纯增量） |
+| P1-11 | 前端测试（Vitest + Playwright） | 前端仍零测试（后端已于 2026-09 建立 `Blog.Tests`，见 backend.md §10.1） | 中—高 | 低（纯增量） |
 | P1-12 | 类型由 OpenAPI 生成 | 手写契约无强制同步（F2），已出过缺陷 | 中 | 中：需后端接口先稳定 |
 
 ### P2 — 长期
@@ -771,7 +771,7 @@ sequenceDiagram
 
 | # | 债务 | 位置 | 影响 |
 |---|---|---|---|
-| F1 | 零测试 | `package.json` 无测试依赖 | 重构无安全网（P1-11） |
+| F1 | 前端零测试 | `package.json` 无测试依赖 | 重构无安全网（P1-11）；后端已有 `Blog.Tests` 可参照 |
 | F2 | 手写 DTO 类型，无强制同步 | `types/index.ts` | 已因 `totalCount` 出过缺陷（P1-12） |
 | F3 | `ApiError.code` 未被任何调用方使用 | `http.ts:4-12` | 401/403/4090 无法差异化处理（P0-1/P1-2） |
 | F4 | ~~loading/error 分支在各视图重复~~ **部分已修**：骨架屏已组件化、shimmer 已全局化；error 分支仍各写 | 13 个视图 | 剩余为 error 提示的统一（P1-10） |

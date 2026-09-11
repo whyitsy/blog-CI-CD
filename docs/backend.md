@@ -94,7 +94,8 @@
 
 ### 2.1 分层
 
-整洁架构四层，依赖方向单向向内。解决方案仅含 4 个工程（`Blog.Backend/Blog.Backend.slnx`）。
+整洁架构四层，依赖方向单向向内。解决方案含 5 个工程（`Blog.Backend/Blog.Backend.slnx`）——
+4 个生产工程 + 1 个测试工程（`Blog.Tests`，2026-09 引入，首个测试项目）。
 
 ```mermaid
 flowchart TB
@@ -954,6 +955,14 @@ JWT 无状态 → **签发后在过期前一直有效**，服务端无法主动�
 | POST | `/api/files/upload` | 26-27 | 28-48 | multipart；`[RequestSizeLimit(50MB)]` |
 | GET | `/api/files/{**path}` | 50 | 52-66 | **仅命中时**下发 `Cache-Control: public,max-age=86400`（404 不缓存，见 §8.2 文件存储），支持 Range |
 
+> **上传响应体**（`POST /api/files/upload`）：
+> ```json
+> { "url": "/api/files/2026/09/xxx.webp", "storedBytes": 246582,
+>   "originalBytes": 6886411, "converted": true }
+> ```
+> 位图会被自动转 WebP，`converted=false` 表示原样保存（详见 §8.2.1）。
+> 前端可据此提示「已压缩 96%」，但**不依赖**这些字段也能正常工作（只取 `url`）。
+
 **Collections**（`Controllers/CollectionsController.cs`，T15 专栏）：
 
 | 方法 | 路由 | 特性行 | 权限 | 说明 |
@@ -1187,6 +1196,45 @@ sequenceDiagram
 > 只存 key 则**只改代码，不动数据**。当前实现返回的是相对 URL 字符串，
 > 迁移前需要先把「URL 构造」从存储实现中剥离出来（R14）。
 
+### 8.2.1 上传图片自动转 WebP `[已实现]`
+
+**目的**：省传输流量。上传的位图在落盘前统一转成 WebP。
+
+| 项 | 值 |
+|---|---|
+| 实现 | `Blog.Infrastructure/Images/ImageSharpOptimizer.cs`（接口 `IImageOptimizer`） |
+| 库 | `SixLabors.ImageSharp` **3.1.12**（**刻意不用 v4**，见下） |
+| 配置 | `FileStorage:ImageOptimization`：`Enabled` / `WebpQuality`(82) / `MaxDimension`(2560) / `MaxPixels`(4000 万) / `ConvertExtensions`(`.png .jpg .jpeg`) |
+| 接入点 | `LocalFileStorageService.SaveAsync` 落盘前调用，用返回的扩展名生成存储名 |
+
+**为什么固定在 ImageSharp 3.x**：v4 起引入**构建期许可密钥**（`sixlabors.lic`），
+社区许可虽然免费但需先向 Six labors 申请，否则**构建直接失败**。
+v3 为纯托管实现（无原生依赖），部署最简。
+许可为 Six Labors Split License：开源 或 年营收 < 100 万美元 视同 Apache-2.0。
+
+**行为规则**（每一条都对应一个真实的数据/流量损失风险）：
+
+| 情况 | 处理 | 理由 |
+|---|---|---|
+| `.png` / `.jpg` / `.jpeg` | 转 WebP（有损，质量 82） | 主路径 |
+| `.webp` / `.gif` / `.svg` / `.ico` / 视频 / 压缩包 | **原样保存** | 已是目标格式；SVG 是矢量不能栅格化 |
+| 多帧图（APNG 等） | **原样保存** | 压成单帧 = 静默丢动画 |
+| 识别/解码失败（损坏文件、伪装成图片的文本） | **原样保存 + WARN** | 绝不因「优化失败」让上传失败 |
+| 转换后反而更大（已优化的低质量 JPEG） | **保留原图** | 避免越压越大 |
+| 像素数 > `MaxPixels` | 原样保存 | 防解压炸弹（几十 KB 的 PNG 可解成几 GB） |
+| 超 `MaxDimension` | 等比缩放 | 首屏图不需要 8K |
+
+**实测效果**（走真实 `POST /api/files/upload`）：
+
+| 输入 | 结果 |
+|---|---|
+| 2048×2048 PNG，6,886,411 字节 | → WebP **246,582 字节**（-96.4%），`converted=true` |
+| SVG 111 字节 | 原样，`converted=false` |
+| 损坏 PNG 30 字节 | **上传成功**、原样保存，日志 WARN |
+
+**约定**：`IImageOptimizer` **永不抛异常、永不导致上传失败**。测试见
+`Blog.Tests/Images/ImageSharpOptimizerTests.cs`（18 例，覆盖上表每一行）。
+
 ### 8.3 工作目录与相对路径（部署注意）
 
 `FileStorage:Root` 是相对路径，**相对于进程的当前工作目录**（见 [tech.md](./tech.md) §1.2 知识点 C）。
@@ -1253,11 +1301,15 @@ sequenceDiagram
 
 | 项 | 状态 | 证据 |
 |---|---|---|
-| 单元测试项目 | `[计划中]` **不存在** | `Blog.Backend.slnx` 仅 4 工程 |
+| 单元测试项目 | `[已实现]` **已建立** | `Blog.Backend/Blog.Tests/Blog.Tests.csproj`（xUnit 2.9.3 + Microsoft.NET.Test.Sdk） |
+| 已覆盖范围 | 上传图片转 WebP 优化器（18 个用例） | `Blog.Tests/Images/ImageSharpOptimizerTests.cs` |
 | 集成测试 | `[计划中]` 不存在 | — |
-| 测试框架 | `[计划中]` 未引入 | csproj 无测试包 |
-| 接口冒烟 | 手工 curl | 无脚本化产物 |
+| 接口冒烟 | 手工 curl + CDP | 无脚本化产物入库 |
 | 前端测试 | `[计划中]` 不存在 | `package.json` 无测试依赖 |
+
+**当前测试入口**：`dotnet test Blog.Backend/Blog.Tests/Blog.Tests.csproj`（18 通过 / 0 失败）。
+覆盖的是**边界行为**而非 happy path：多帧图不得压成单帧、损坏文件仍须原样保存、
+产物绝不大于原图、超长边等比缩放、开关关闭即全放行。
 
 **`[已决定]` 测试优先级**（P0-3）：
 
@@ -1334,7 +1386,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | P0-1 | ~~JWT 认证 + 双角色授权~~ **已完成**（`[已实现]`） | — | — | 剩余：前端登录页与路由守卫 |
 | P0-2 | ~~草稿权限保护~~ **已完成**（`[已实现]`） | — | — | 剩余：前端按角色隐藏入口 |
-| P0-3 | **建立测试工程** | 零测试，后续所有重构无安全网（§10.1） | 中 | 低（纯增量） |
+| P0-3 | ~~建立测试工程~~ **部分完成**：`Blog.Tests`（xUnit）已建立并覆盖图片优化器 18 例；**剩余**：业务服务与接口层仍无测试，CI 未接入 | 中 | 低（纯增量） |
 | P0-4 | **敏感配置外置** | 连接串与 JWT 签名密钥不可入库（R7） | 低 | 低 |
 | P0-5 | ~~初始管理员安全初始化~~ **部分完成**：已用 PBKDF2 哈希种子 `admin@example.com`，但**密码是仓库公开值**，生产必须立即修改 | 低 | 低 |
 | P0-6 | ~~自定义 PostgreSQL 镜像（含 zhparser）~~ **已完成**（`deploy/postgres-zhparser.Dockerfile` 已构建并在全新容器实测）；**剩余**：切换开发/生产容器（需确认，见 suggestion.md T11） | 低 | 低 |

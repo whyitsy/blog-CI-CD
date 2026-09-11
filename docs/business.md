@@ -718,7 +718,7 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | 1 | **认证 + 授权（JWT，双角色）** | **P0** | 写接口与草稿当前完全裸奔，是唯一「不修就不能公开部署」的问题 | 中 | 中：新增 `User`/`Collection` 表与迁移；`Author` 语义调整 |
 | 2 | **草稿权限保护** | **P0** | 属 #1 子集，但即使认证延后也应先关闭 `includeUnpublished` 匿名访问 | 低 | 低 |
-| 3 | **建立测试工程** | **P0** | 当前零测试零 CI，后续重构无安全网 | 中 | 低（纯增量） |
+| 3 | ~~建立测试工程~~ **部分完成** | **P0** | `Blog.Tests`（xUnit）已建立，覆盖图片优化器 18 例；业务服务/接口层与 CI 仍缺 | 中 | 低（纯增量） |
 | 4 | **敏感配置外置** | **P0** | 连接串明文入库 | 低 | 低 |
 | 5 | **中文全文检索（FTS）** | P1 | 当前全表扫描 + 无相关度排序（§4.6）；T9 已定为 `zhparser` + GIN | 中 | 中：需迁移建生成列与索引；**依赖自定义 PG 镜像**（T11） |
 | 6 | **专栏功能** | P1 | T2 已定为多对多 | 中 | 低：纯增量（新增 2 张表） |
@@ -763,7 +763,7 @@ stateDiagram-v2
 | R5 | **评论绑定 URL pathname** | 文章 URL 变更导致历史评论失联 | `GiscusComments.vue:21` |
 | R6 | **种子作者头像失效** | `/media/avatar-default.png` 不由后端提供 | `BlogDbContext.cs:128` vs `FilesController.cs:9` |
 | R7 | **连接串明文入库** | 生产凭据泄露风险 | `appsettings.Development.json:8-10` |
-| R8 | **零测试 + 零 CI** | 回归全靠人工，重构风险高 | `Blog.Backend.slnx` 仅 4 工程；无 CI 配置 |
+| R8 | **测试与 CI 覆盖不足** | 回归仍主要靠人工；`Blog.Tests` 只覆盖图片优化器，业务服务与接口层无测试，CI 未接入 | `Blog.Backend.slnx` 现有 5 工程；无 CI 配置 |
 | R9 | **摘要前端不可用** | 编辑器有输入框但 `api/posts.ts` 不提交，后端也无字段 | `PostEditor.vue` vs `api/posts.ts:40-47` |
 | R10 | **`Posts.AuthorId` 非空却配 `SetNull`** | 语义矛盾；硬删除会抛错 | `BlogDbContext.cs:44-47` |
 | R11 | **缓存 key 无版本号** | schema 变更时旧缓存无法安全失效 | `CacheKeys.cs` |

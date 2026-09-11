@@ -86,9 +86,10 @@ ERROR:  text search configuration "chinese" does not exist
 | **T16** | **两个登录页合并为单一 `/login`** | ✅ **已完成** | 后端两个角色专用端点合并为角色无关的 `/api/auth/login`（端点总数 48 → 47）；前端 `LoginView` 单一页面，登录后按 `role` 跳 `/admin` 或 `/me`；旧 `/admin/login` 保留为重定向。**根因是命名撞车**：`Author` 实体无法登录（无密码字段），能与「作者登录」混淆 |
 | **T17** | **业务异常被记成 `[ERR]` + 状态 500 + 完整堆栈** | ✅ **已修** | `UseSerilogRequestLogging` 原先注册在 `ExceptionHandlingMiddleware` **内层**，异常先穿过它，导致日志状态码与客户端实际收到的 404 不一致，且正常业务失败刷满错误日志。已改为注册在外层并用 `GetLevel` 分级（5xx=ERR / 4xx=WRN / 其他=INF）。**实测**：业务 404 → `[WRN] 响应 404`；停库造成的真故障 → `[ERR] 响应 500` |
 | **T18** | **文件接口把「不存在」的 404 缓存 24 小时** | ✅ **已修** | `[ResponseCache(Duration=86400)]` 标在 action 上，会给**所有**响应（含 404）加缓存头。后果：文件补齐或部署完成后，浏览器仍把 404 缓存一整天，首页 hero 一直空白，必须强刷。已改为仅在命中文件时手动下发 `Cache-Control`。**这个坑真实发生过**：本地误从 `bin/` 目录启动后端，`media/` 解析到空目录，图片 404 被浏览器缓存，即使改对目录后页面依旧不显示 |
+| **T20** | **上传图片自动转 WebP** | ✅ **已完成** | 新增 `IImageOptimizer` + `ImageSharpOptimizer`（ImageSharp 3.1.12），在 `LocalFileStorageService` 落盘前转换：`.png/.jpg/.jpeg` → 有损 WebP（质量 82，最长边 2560），其余原样。**核心约定：优化器永不抛异常、永不导致上传失败** —— 多帧图/损坏文件/无收益一律原样保存 + WARN。上传响应新增 `storedBytes/originalBytes/converted`。同时建立**第一个测试工程** `Blog.Tests`（xUnit），18 例覆盖全部边界。实测：2048×2048 PNG 6.89MB → 246KB（-96.4%） |
 | **T19** | **`FileStorage:Root` 依赖进程工作目录（P1）** | `[待修]` | `Root = "media"` 由 `Path.GetFullPath` 按 **CWD** 解析（`LocalFileStorageService.cs:88`）。同一份二进制从项目目录启动能读到图片，从 `bin/Debug/net10.0/` 启动则全部 404。本地启动后端**必须以 `Blog.WebApi/` 为工作目录**。建议改为基于 `ContentRootPath` 或配置绝对路径 |
 
-**建议顺序**：~~T13~~ → ~~T14a~~ → ~~T15 专栏~~ → ~~T14b 作者管理~~ → ~~T16 登录页合并~~ → ~~T17/T18 日志与缓存修复~~（均已完成）→ **T19（存储根改为不依赖 CWD）** → **T12（搜索相关度排序）** → 原 objective 各项已全部落地，剩下是 P0 工程项（测试/CI/配置外置）与 T11 容器切换。
+**建议顺序**：~~T13~~ → ~~T14a~~ → ~~T15 专栏~~ → ~~T14b 作者管理~~ → ~~T16 登录页合并~~ → ~~T17/T18 日志与缓存修复~~ → ~~T20 上传自动转 WebP~~（均已完成）→ **T19（存储根改为不依赖 CWD）** → **T12（搜索相关度排序）** → 剩下是 P0 工程项（业务/接口层测试、CI、配置外置）与 T11 容器切换。
 
 > **T16 顺带澄清的模型问题**（用户提出）：`Author` **不能登录**，它只承载署名资料
 > （`Name/Email/Avatar/Bio`，没有 `PasswordHash`/`Role`）；登录的是 `User`（`role` 为
@@ -97,12 +98,17 @@ ERROR:  text search configuration "chinese" does not exist
 > `Post.CreatedByUserId`（归属，决定改/删权限，`PostService.cs:221-224` 明确只认后者）。
 > 原作者账号未关联 `Author` 时会回退到库中首个作者（`PostService.cs:334-338`）。
 
-> **T18 待确认项**：站点配置 `SiteConfig.HeroBackground` 指向一张
-> **6.57MB / 2048×2048** 的用户上传 PNG（`media/2026/09/83715b0f...png`），
-> 首页实际加载的就是它。它与 `src/assets/hero.png` 是**两张不同的图**：
-> 后者是站点配置为空时的兜底，已压缩为 `hero.webp`（227KB，2560×1440）。
-> 因为站点配置非空，**压缩兜底图对线上首屏没有任何效果**，首页仍旧下载 6.57MB。
-> 是否把这个上传件也压成 WebP 需用户确认（它是运行期数据，`media/` 已被 gitignore）。
+> **T18 后续（已处理）**：站点配置 `SiteConfig.HeroBackground` 原先指向一张
+> **6.89MB / 2048×2048** 的用户上传 PNG —— 首页实际加载的是它，
+> 而 `src/assets/hero.png` 只是「站点配置为空」时的兜底，两者是**不同的图**。
+> 因此只压缩兜底图对首屏毫无效果。已按用户确认把这个上传件也转成 WebP：
+> **6,886,411 → 250,062 字节（-96.4%）**，URL 由 `.png` 改为 `.webp` 并更新站点配置
+> （版本 2 → 3），原文件备份在 `media/.backup/2026/09/`。
+>
+> **注意**：URL 必须随扩展名一起改。若保留 `.png` 文件名却写入 WebP 字节，
+> 文件接口会按扩展名下发 `Content-Type: image/png`，浏览器拿到与声明不符的数据会渲染失败。
+>
+> 这一类「上传图过大」的问题此后由 **T20** 自动兜住。
 
 > **T14b 顺带清理的重复**：原 `/admin/profile`（博主资料）与新的 `/admin/authors` 职责重叠
 > （都在维护 `Author`），已统一到作者管理；`/admin/profile` 保留为重定向，侧边栏移除该入口，
