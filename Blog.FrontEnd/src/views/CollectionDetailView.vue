@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { getCollectionBySlug } from '@/api/collections'
+import { isNotFoundError } from '@/api/http'
 import { PostDetailSkeleton } from '@/components/skeleton'
 import type { CollectionDetailDto } from '@/types'
 
@@ -10,21 +11,27 @@ const route = useRoute()
 const detail = ref<CollectionDetailDto | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
-const errorMsg = ref('')
+const loadFailed = ref(false)
 
 const slug = computed(() => String(route.params.slug ?? ''))
 
 async function load(s: string) {
   loading.value = true
-  errorMsg.value = ''
   notFound.value = false
+  loadFailed.value = false
   detail.value = null
   try {
     detail.value = await getCollectionBySlug(s)
   } catch (e) {
-    // 后端对「不存在」与「未发布且非管理员」都返回 404，避免探测
-    notFound.value = true
-    errorMsg.value = e instanceof Error ? e.message : '加载失败'
+    // 后端对「不存在」与「未发布且非管理员」都返回 404，避免探测。
+    // 其余错误（网络异常、502/503、500…）是服务端故障，不能当成「专栏不存在」，
+    // 也不把内部错误信息展示到页面上——技术细节只写控制台，页面给中性提示。
+    if (isNotFoundError(e)) {
+      notFound.value = true
+    } else {
+      loadFailed.value = true
+      console.error('[collection-detail] 加载专栏失败：', e)
+    }
   } finally {
     loading.value = false
   }
@@ -45,8 +52,22 @@ function fmtDate(iso: string | null) {
       <div class="container not-found">
         <p class="nf-icon">📚</p>
         <h1 class="nf-title">专栏不存在</h1>
-        <p class="nf-desc">{{ errorMsg }}</p>
-        <RouterLink to="/collections" class="nf-link">查看全部专栏</RouterLink>
+        <p class="nf-desc">该专栏可能已被删除，或尚未发布。</p>
+        <div class="nf-actions">
+          <RouterLink to="/collections" class="nf-link">查看全部专栏</RouterLink>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="loadFailed">
+      <div class="container not-found">
+        <p class="nf-icon">⚠️</p>
+        <h1 class="nf-title">加载失败</h1>
+        <p class="nf-desc">服务暂时不可用，请稍后重试。</p>
+        <div class="nf-actions">
+          <button type="button" class="nf-link nf-btn" @click="load(slug)">重新加载</button>
+          <RouterLink to="/collections" class="nf-link">查看全部专栏</RouterLink>
+        </div>
       </div>
     </template>
 
@@ -232,9 +253,26 @@ function fmtDate(iso: string | null) {
   color: var(--text-muted);
   margin-bottom: var(--space-5);
 }
+.nf-actions {
+  display: flex;
+  gap: var(--space-5);
+  justify-content: center;
+  align-items: center;
+}
 .nf-link {
   color: var(--brand-500);
   font-size: 14px;
+}
+.nf-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.nf-btn:hover,
+.nf-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 767px) {

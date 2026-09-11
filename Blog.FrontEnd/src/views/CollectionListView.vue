@@ -15,7 +15,9 @@ async function load() {
   try {
     collections.value = await getCollections()
   } catch (e) {
+    // 技术细节只进控制台；页面给中性提示，不暴露 HTTP 状态码等内部信息
     errorMsg.value = e instanceof Error ? e.message : '加载失败'
+    console.error('[collections] 加载专栏列表失败：', e)
   } finally {
     loading.value = false
   }
@@ -38,7 +40,8 @@ onMounted(load)
 
       <TaxonomySkeleton v-if="loading" :count="6" />
 
-      <p v-else-if="collections.length === 0" class="empty">暂无专栏</p>
+      <!-- 加载失败时不再显示「暂无专栏」，否则会把服务故障误导成「真的没有内容」 -->
+      <p v-else-if="!errorMsg && collections.length === 0" class="empty">暂无专栏</p>
 
       <div v-else class="grid">
         <RouterLink

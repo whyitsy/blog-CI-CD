@@ -28,6 +28,14 @@ export const ErrorCode = {
   InternalError: 5000,
 } as const
 
+/**
+ * 判断错误是否为「资源不存在」。
+ * 后端统一业务码为 4040；反向代理等返回的裸 404 没有响应体，只能靠 HTTP 状态码兜底。
+ */
+export function isNotFoundError(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === ErrorCode.NotFound || e.code === 404)
+}
+
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
 /**
@@ -75,7 +83,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       unauthorizedHandler?.()
       throw new ApiError(ErrorCode.Unauthorized, '未认证或登录已过期，请重新登录')
     }
-    throw new ApiError(res.status, `请求失败（HTTP ${res.status}）`)
+    // 非统一响应体（反向代理 502/503、网关超时、路由未匹配等）：
+    // 文案一律中性化，不把 HTTP 状态码等基础设施细节暴露给用户；
+    // 状态码仍保留在 ApiError.code 里，供调用方分支判断与排查。
+    if (res.status === 404) {
+      throw new ApiError(ErrorCode.NotFound, '请求的资源不存在')
+    }
+    throw new ApiError(res.status, '服务暂时不可用，请稍后重试')
   }
 
   if (body.code !== ErrorCode.Ok) {

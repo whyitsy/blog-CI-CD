@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { getPostDetail } from '@/api/posts'
+import { isNotFoundError } from '@/api/http'
 import type { PostDetailDto } from '@/types'
 import GiscusComments from '@/components/common/GiscusComments.vue'
 import PostDetailSkeleton from '@/components/skeleton/PostDetailSkeleton.vue'
@@ -12,6 +13,7 @@ const route = useRoute()
 const post = ref<PostDetailDto | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
+const loadFailed = ref(false)
 
 interface TocItem {
   id: string
@@ -31,13 +33,21 @@ const renderedContent = computed(() => {
 async function load(id: string) {
   loading.value = true
   notFound.value = false
+  loadFailed.value = false
   post.value = null
   try {
     post.value = await getPostDetail(id)
     document.title = `${post.value.title} - kky's blog`
     buildToc()
-  } catch {
-    notFound.value = true
+  } catch (e) {
+    // 只有真正的「不存在」（业务码 4040 / 裸 404）才是 404 页；
+    // 服务端故障与网络异常要说成加载失败，不能误导用户以为文章没了。
+    if (isNotFoundError(e)) {
+      notFound.value = true
+    } else {
+      loadFailed.value = true
+      console.error('[post-detail] 加载文章失败：', e)
+    }
   } finally {
     loading.value = false
   }
@@ -115,7 +125,20 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
     <div v-else-if="notFound" class="container not-found">
       <p class="nf-icon">🔍</p>
       <h1 class="nf-title">文章不存在</h1>
+      <p class="nf-desc">该文章可能已被删除，或尚未发布。</p>
       <RouterLink to="/" class="nf-link">返回首页</RouterLink>
+    </div>
+
+    <div v-else-if="loadFailed" class="container not-found">
+      <p class="nf-icon">⚠️</p>
+      <h1 class="nf-title">加载失败</h1>
+      <p class="nf-desc">服务暂时不可用，请稍后重试。</p>
+      <div class="nf-actions">
+        <button type="button" class="nf-link nf-btn" @click="load(String(route.params.id ?? ''))">
+          重新加载
+        </button>
+        <RouterLink to="/" class="nf-link">返回首页</RouterLink>
+      </div>
     </div>
 
     <template v-else-if="post">
@@ -556,7 +579,21 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
 .nf-title {
   font: var(--text-h2);
   color: var(--text-strong);
+  margin-bottom: var(--space-4);
+}
+
+.nf-desc {
+  font: var(--text-body-sm);
+  color: var(--text-muted);
   margin-bottom: var(--space-6);
+}
+
+.nf-actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .nf-link {
@@ -564,5 +601,12 @@ const readMinutes = computed(() => (post.value ? Math.max(1, Math.round(post.val
   color: #fff;
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
   border-radius: var(--radius-sm);
+}
+
+.nf-btn {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
 }
 </style>
