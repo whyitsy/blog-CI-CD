@@ -103,10 +103,13 @@ docker run -d --name pgsql-zh-test \
 
 ---
 
-## 4. 切换开发环境的 PostgreSQL 容器
+## 4. 切换开发环境的 PostgreSQL 容器（✅ 已执行）
 
-**当前开发容器 `pgsql` 是官方镜像 + 手工编译的扩展**，数据在**命名卷**里。
-因为数据在卷上（而不是容器内），**替换容器不会丢数据**：
+> **状态：已完成。** 开发容器 `pgsql` 现运行 `blog-postgres-zhparser:18`，
+> 数据卷沿用原卷，业务数据与扩展配置均已验证（见 §5）。
+> 下方步骤保留作为**操作手册与灾难恢复参考**。
+
+数据在**命名卷**里（而不是容器内），因此**替换容器不会丢数据**：
 
 ```bash
 # 1) 先确认数据卷名（下面这条会打印卷名，形如 3aaacea5...）
@@ -122,17 +125,80 @@ docker run -d --name pgsql \
   -v <上一步打印的卷名>:/var/lib/postgresql \
   blog-postgres-zhparser:18
 
-# 4) 验证既有库仍在，并创建扩展与检索配置
-docker exec pgsql psql -U kky -d blog_stage2 -c "CREATE EXTENSION IF NOT EXISTS zhparser;"
-#    检索配置用 postgres-init/01-zhparser.sql 的 DO 块（对已有库需手工执行一次）
+# 4) 验证既有库仍在，并确认扩展与检索配置
+docker exec pgsql psql -U kky -d blog_stage2 -tAc \
+  "SELECT extname FROM pg_extension WHERE extname='zhparser';"
+docker exec pgsql psql -U kky -d blog_stage2 -tAc \
+  "SELECT to_tsvector('chinese','使用 EF Core 做数据库优化与全文检索');"
 
-# 5) 确认无误后再删除旧容器
+# 5) 确认无误后删除旧容器
 docker rm pgsql-old
 ```
 
 > **注意**：`-v <卷名>:/var/lib/postgresql` 的挂载点是 `/var/lib/postgresql`，
-> 与官方镜像一致（不是 `/var/lib/postgresql/data`）。写错会导致容器以为数据目录为空而重新初始化，
-> 表现为「数据看起来丢了」（实际还在卷里）。
->
-> **本步骤尚未执行** —— 需要你确认后再切换（见 [../docs/09-已知限制与技术债.md](../docs/09-已知限制与技术债.md) §2）。
-> 在切换之前，当前容器里的 zhparser 是手工装的，**容器一重建就会失效**。
+> 与官方镜像一致（不是 `/var/lib/postgresql/data`）。PG18 的 `PGDATA` 实际是
+> `/var/lib/postgresql/18/docker`，所以卷挂在这一层才能覆盖到数据目录。
+> 写错会导致容器以为数据目录为空而重新初始化，表现为「数据看起来丢了」（实际还在卷里）。
+
+---
+
+## 5. 切换执行记录与验证（2026-09-11）
+
+### 执行
+
+```bash
+# 1) 先做安全备份（不依赖卷是否完好）
+docker exec pgsql pg_dump -U kky -d blog_stage2 --no-owner --no-acl -f /tmp/b.sql
+docker cp pgsql:/tmp/b.sql D:/tmpbuild/pgbackup/
+
+# 2) 换容器（数据卷沿用）
+docker stop pgsql && docker rename pgsql pgsql-old
+docker run -d --name pgsql \
+  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=blog \
+  -p 5432:5432 \
+  -v 3aaacea5a25e5a7f7b0982fec9347baa1eeeede50c4e0541dbf704d818d77ce6:/var/lib/postgresql \
+  blog-postgres-zhparser:18
+```
+
+### 验证结果
+
+| 检查项 | 结果 |
+|---|---|
+| 数据库全部保留 | ✅ `blog` / `blog_dev` / `blog_stage2` / `hangfire_dev` |
+| 业务数据未丢 | ✅ Posts 9 / Users 7 / Authors 4 / SiteConfigs 4 / SocialLinks 3 / Collections 2 |
+| 迁移记录完整 | ✅ 2 个迁移均在（`InitCreate`、`AddAuthCollectionsAndFts`） |
+| GIN 索引仍在 | ✅ `ix_posts_search` |
+| `chinese` 检索配置 | ✅ parser = `zhparser`，token 映射 `a,e,i,j,l,n,q,v` |
+| 中文分词为词级 | ✅ `'core':3 'ef':2 '优化':6 '使用':1 '做':4 '全文检索':7 '数据库':5` |
+| 检索匹配 | ✅ `@@ plainto_tsquery('chinese','数据库')` → `t` |
+| 应用连通 | ✅ 后端启动即迁移成功，`/api/posts/search?keyword=数据库` 返回 200 |
+
+### 关键验证：容器重建后扩展是否还在
+
+在**一次性容器 + 全新空数据卷**上模拟"容器重建"：
+
+```bash
+docker run -d --name pgsql-zh-verify -p 5433:5432 \
+  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=zh_verify \
+  blog-postgres-zhparser:18
+```
+
+| 检查项 | 结果 |
+|---|---|
+| entrypoint 执行初始化脚本 | ✅ 日志出现 `running /docker-entrypoint-initdb.d/01-zhparser.sql` |
+| 扩展自动创建 | ✅ `ext=zhparser` |
+| 检索配置自动创建 | ✅ `cfg=chinese` |
+| 分词可用 | ✅ `'中文':1 '全文检索':2 '测试':3` |
+
+验证后已删除该容器。**结论：容器重建不再影响全文检索。**
+
+### 回退点
+
+旧容器保留为 `pgsql-old`（`postgres:18.6`，已停止状态）。
+确认新容器稳定后可删除：
+
+```bash
+docker rm pgsql-old
+```
+
+备份文件位于 `D:/tmpbuild/pgbackup/blog_stage2_<时间戳>.sql`。

@@ -1,6 +1,7 @@
 using Blog.Application.Common;
 using Blog.Application.Interfaces;
 using Blog.Infrastructure.Files;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -25,8 +26,13 @@ namespace Blog.WebApi.Controllers
         /// <summary>
         /// 上传文件，返回可访问的相对 URL。
         /// 位图会自动转 WebP，响应里带回转换前后的字节数以便前端提示压缩效果。
+        ///
+        /// **需要 ContentWriter**（Admin 或 Author）：上传是写操作，
+        /// 匿名开放会让任何人都能往服务器塞文件（耗尽磁盘）。
+        /// 读取（下面的 GET）保持公开——文章封面/头像必须能被匿名访客看到。
         /// </summary>
         [HttpPost("upload")]
+        [Authorize(Policy = "ContentWriter")]
         [RequestSizeLimit(50 * 1024 * 1024)]
         public async Task<ApiResponse<object>> Upload(IFormFile file, CancellationToken cancellationToken)
         {

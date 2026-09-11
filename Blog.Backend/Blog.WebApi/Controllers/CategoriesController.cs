@@ -1,5 +1,6 @@
 using Blog.Application.Common;
 using Blog.Application.Services.Category;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Blog.WebApi.Controllers
@@ -24,21 +25,27 @@ namespace Blog.WebApi.Controllers
             return ApiResponse<List<CategoryDto>>.Ok(items);
         }
 
+        /// <summary>创建分类（仅管理员；按 T6，Author 不能创建分类/标签）</summary>
         [HttpPost]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<ApiResponse<CategoryDto>> Create([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken)
         {
             var created = await _categories.CreateAsync(request, cancellationToken);
             return ApiResponse<CategoryDto>.Ok(created);
         }
 
+        /// <summary>更新分类（仅管理员，乐观锁）</summary>
         [HttpPut("{id:guid}")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<ApiResponse<CategoryDto>> Update(Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken)
         {
             var updated = await _categories.UpdateAsync(id, request, cancellationToken);
             return ApiResponse<CategoryDto>.Ok(updated);
         }
 
+        /// <summary>软删除分类（仅管理员，乐观锁）</summary>
         [HttpDelete("{id:guid}")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<ApiResponse<object?>> Delete(Guid id, [FromQuery] int version, CancellationToken cancellationToken)
         {
             await _categories.DeleteAsync(id, version, cancellationToken);

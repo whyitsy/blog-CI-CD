@@ -441,17 +441,13 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | # | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|---|
 | 19 | GET | `/api/categories` | 🌐 公开 | 列表（含文章数） |
-| 20 | POST | `/api/categories` | ⚠️ **当前公开** | 创建 |
-| 21 | PUT | `/api/categories/{id}` | ⚠️ **当前公开** | 更新（乐观锁） |
-| 22 | DELETE | `/api/categories/{id}` | ⚠️ **当前公开** | 软删除（乐观锁） |
+| 20 | POST | `/api/categories` | 👑 AdminOnly | 创建 |
+| 21 | PUT | `/api/categories/{id}` | 👑 AdminOnly | 更新（乐观锁） |
+| 22 | DELETE | `/api/categories/{id}` | 👑 AdminOnly | 软删除（乐观锁） |
 
-> ⚠️ **`CategoriesController` 目前完全没有 `[Authorize]`**，三个写接口匿名可调用。
-> 设计意图是"仅 Admin"（与专栏、账号管理一致），但**属性遗漏未加**。
-> 见 §9.4 的安全缺口汇总与 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §1。
->
-> 前端侧仍按"仅 Admin"处理：作者角色在编辑器里看不到"快速新建分类"入口
-> （用 `canManageTaxonomy` 控制）。**但前端隐藏入口不是安全边界**——
-> 直接调用接口依然能成功，这正是必须补后端属性的原因。
+> **写接口仅 Admin**（按 T6，Author 不能创建分类/标签）。
+> 作者角色在编辑器里看不到"快速新建分类"入口（前端用 `canManageTaxonomy` 控制），
+> 后端也独立校验，**不依赖前端隐藏**。
 
 `CategoryDto`：
 
@@ -477,11 +473,11 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | # | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|---|
 | 23 | GET | `/api/tags` | 🌐 公开 | 列表（含文章数） |
-| 24 | POST | `/api/tags` | ⚠️ **当前公开** | 创建 |
-| 25 | PUT | `/api/tags/{id}` | ⚠️ **当前公开** | 更新（乐观锁） |
-| 26 | DELETE | `/api/tags/{id}` | ⚠️ **当前公开** | 软删除（乐观锁） |
+| 24 | POST | `/api/tags` | 👑 AdminOnly | 创建 |
+| 25 | PUT | `/api/tags/{id}` | 👑 AdminOnly | 更新（乐观锁） |
+| 26 | DELETE | `/api/tags/{id}` | 👑 AdminOnly | 软删除（乐观锁） |
 
-结构与分类完全对称，**包括"写接口缺少 `[Authorize]`"这一缺口**（见 §9.4）。
+结构与分类完全对称（含同样的 AdminOnly 限制）。
 `TagDto`：`{ id, name, postCount, version }`。
 `name` 上限 **50** 字符（比分类的 100 短）。
 
@@ -568,11 +564,15 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | # | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|---|
 | 34 | GET | `/api/site/config` | 🌐 公开 | 首屏配置聚合 |
-| 35 | PUT | `/api/site/config` | ⚠️ 见 §9.4 | 逐项更新配置（乐观锁） |
-| 36 | GET | `/api/site/social-links` | 🌐 公开* | 社交链接 |
-| 37 | PUT | `/api/site/social-links` | ⚠️ 见 §9.4 | 批量新增/更新 |
-| 38 | DELETE | `/api/site/social-links/{id}` | ⚠️ 见 §9.4 | 软删除（乐观锁） |
+| 35 | PUT | `/api/site/config` | 👑 AdminOnly | 逐项更新配置（乐观锁） |
+| 36 | GET | `/api/site/social-links` | 🌐 公开 | 社交链接 |
+| 37 | PUT | `/api/site/social-links` | 👑 AdminOnly | 批量新增/更新 |
+| 38 | DELETE | `/api/site/social-links/{id}` | 👑 AdminOnly | 软删除（乐观锁） |
 | 39 | GET | `/api/site/stats` | 🌐 公开 | Footer 统计 |
+
+> **读保持公开**：`GET /api/site/social-links` 是公开首屏要用的（本站 store 在启动时
+> 调用它以渲染可见的社交图标），因此**不能**加鉴权。
+> 三个写接口则仅 Admin。
 
 ### 9.1 `GET /api/site/config`
 
@@ -618,51 +618,34 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 
 `SocialLinkDto`：`{ id, name, icon, url, sortOrder, isVisible, version }`
 
-> ⚠️ **`includeHidden` 目前不校验权限**——匿名也能传 `true` 拿到隐藏项。
-> 隐藏项只是前端不显示，不是敏感数据，因此风险低。见 §9.4。
+> **`includeHidden` 不校验权限**——匿名也能传 `true` 拿到隐藏项。
+> 这是**刻意的**：该端点是公开首屏要用的（公开读，见 §9 顶部说明），
+> 而隐藏项只是前端不展示、并非敏感数据。**写接口才是安全边界**，均已鉴权（见 §9.4）。
 
-### 9.4 ⚠️ 安全缺口汇总（写接口缺少鉴权）
+### 9.4 写接口鉴权状态（已全部落实）
 
-以下是**当前代码里确实缺少 `[Authorize]` 的写接口**。它们的**设计意图都是"仅 Admin / 仅 ContentWriter"**，
-但属性遗漏未加，导致匿名可调用。这是本项目目前最严重的技术债。
+**所有写接口（POST / PUT / DELETE）都已带上正确的鉴权策略**，
+匿名调用一律返回 **401 + code 4010**。
 
-| 端点 | 设计意图 | 当前实际 |
+| 控制器 | 写接口策略 | 说明 |
 |---|---|---|
-| `POST /api/categories` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `PUT /api/categories/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `DELETE /api/categories/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `POST /api/tags` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `PUT /api/tags/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `DELETE /api/tags/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `PUT /api/site/config` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `PUT /api/site/social-links` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `DELETE /api/site/social-links/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
-| `POST /api/files/upload` | ✍️ ContentWriter（推测） | ⚠️ 匿名可调用 |
+| `PostsController` | `ContentWriter` | 增删改 + 发布；另在 Service 层做**归属校验** |
+| `AuthorsController` | POST/DELETE `AdminOnly`；PUT `ContentWriter` | PUT 另按 `AuthorId` 限制"作者只能改自己" |
+| `CategoriesController` | `AdminOnly` | 创建/更新/删除分类 |
+| `TagsController` | `AdminOnly` | 创建/更新/删除标签 |
+| `CollectionsController` | `AdminOnly` | 增删改 + 文章编排 |
+| `UsersController` | `AdminOnly` | 类级标注，整个控制器仅管理员 |
+| `SiteController` | `AdminOnly` | 配置更新、社交链接保存/删除 |
+| `FilesController` | `ContentWriter`（仅上传） | **读取保持公开**（文章封面/头像需匿名可见） |
+| `AuthController` | 登录 `AllowAnonymous`；`me`/`logout` 需登录 | 登录入口不承担权限边界 |
 
-**影响**：
+**读接口（GET）保持公开**——公开站点必须能匿名浏览，
+唯一例外是 `/api/posts/{id}/readonly`（编辑器用）与 `/api/collections/id/{id}`（管理端用），
+它们分别要求 `ContentWriter` 与 `AdminOnly`。
 
-- 任何人都能增删改分类、标签
-- 任何人都能改站点名称、首屏文案、背景图、社交链接
-- 任何人都能往服务器上传文件（可被用来耗尽磁盘）
-
-**为什么前端看不到问题**：前端的按钮可见性由角色控制（`canManageTaxonomy`、路由守卫），
-所以正常点界面时看不出异常。**但前端隐藏入口不是安全边界**，直接发请求就能绕过。
-
-**修复方式**（逐个加属性即可，无需改逻辑）：
-
-```csharp
-// CategoriesController / TagsController 的写 action
-[HttpPost]
-[Authorize(Policy = "AdminOnly")]   // ← 补这一行
-
-// SiteController 的三个写 action 同理
-// FilesController.Upload 至少要求 ContentWriter
-```
-
-> 注意 `PUT /api/site/social-links` 的管理端读接口 `GET /api/site/social-links?includeHidden=true`
-> **同样不校验权限**——但隐藏项不是敏感数据（前端只是不展示），风险远低于写接口。
->
-> 完整技术债清单见 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §1。
+> ⚠️ **改这个控制器时请守住一条原则**：前端隐藏按钮**不是安全边界**，
+> 新加的写接口必须自己带 `[Authorize]`。
+> 这一点有过教训——上述策略曾经遗漏过，历史记录见 [10-决策记录.md](./10-决策记录.md) §5。
 
 ### 9.5 `PUT /api/site/social-links` — 批量保存
 
@@ -773,12 +756,12 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 
 | # | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|---|
-| 46 | POST | `/api/files/upload` | ⚠️ 🌐 公开 | 上传文件，返回可访问 URL |
+| 46 | POST | `/api/files/upload` | ✍️ ContentWriter | 上传文件，返回可访问 URL |
 | 47 | GET | `/api/files/{**path}` | 🌐 公开 | 读取文件 |
 
-> ⚠️ **上传接口当前无鉴权**（该控制器没有 `[Authorize]`），匿名可上传。
-> 与分类/标签/站点配置的写接口同属"遗留未鉴权"，见 §9.4。
-> 修复方式：上传至少要求 `ContentWriter`（或 `AdminOnly`）。
+> **上传需要 `ContentWriter`**（Admin 或 Author）：上传是写操作，
+> 匿名开放会让任何人都能往服务器塞文件。**读取保持公开**——
+> 文章封面与作者头像必须能被匿名访客加载。
 
 ### 11.1 `POST /api/files/upload`
 
