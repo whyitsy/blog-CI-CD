@@ -822,7 +822,7 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 （会实际跑一次 `to_tsvector('chinese', ...)`）、迁移是否全部应用、Redis 连通性
 （仅当 `Cache:Provider = Redis` 时视为必需）。
 实现见 `Blog.WebApi/HealthChecks/HealthCheckSetup.cs`，设计说明见
-[03-后端设计.md](./03-后端设计.md) §11.6。
+[03-后端设计.md](./03-后端设计.md) §11。
 
 ---
 
