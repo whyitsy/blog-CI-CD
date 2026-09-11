@@ -46,16 +46,21 @@ namespace Blog.WebApi.Controllers
             }
         }
 
-        /// <summary>读取文件（如 /api/files/2026/09/xxx.png），带缓存头</summary>
+        /// <summary>读取文件（如 /api/files/2026/09/xxx.png），命中时下发长缓存</summary>
         [HttpGet("{**path}")]
-        [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
         public async Task<IActionResult> Get(string path, CancellationToken cancellationToken)
         {
             var result = await _storage.GetAsync(path, cancellationToken);
+
+            // 注意：缓存头**只能**在命中文件时下发。
+            // 之前这里用 [ResponseCache] 标注 action，会给「文件不存在」的 404 也盖上
+            // `public, max-age=86400`，于是浏览器把 404 缓存一整天：等文件补回来（或部署完成后）
+            // 用户仍然长时间看到空白背景，必须手动强刷才能恢复。
             if (result is null)
                 return NotFound(ApiResponse.Fail(ErrorCodes.NotFound, "文件不存在"));
 
             var (stream, contentType) = result.Value;
+            Response.Headers.CacheControl = "public,max-age=86400";
             return File(stream, contentType, enableRangeProcessing: true);
         }
     }
