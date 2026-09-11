@@ -5,7 +5,7 @@ namespace Blog.Domain.Entities
     /// <summary>
     /// 专栏：把多篇文章组织成一个系列。
     /// 与 <see cref="Category"/> 的区别：分类是「广度」上的单值归类，专栏是「深度」上的系列组织，
-    /// 且一篇文章可属于多个专栏（多对多，见 docs/tech.md §3.1 / T2）。
+    /// 且一篇文章可属于多个专栏（多对多，见 docs/06-数据库设计.md §5.2 / T2）。
     /// </summary>
     public class Collection : BaseEntity
     {

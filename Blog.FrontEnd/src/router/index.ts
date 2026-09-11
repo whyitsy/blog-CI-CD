@@ -80,7 +80,7 @@ const router = createRouter({
       ],
     },
 
-    // 404：真实的不存在页面（此前是静默重定向首页，会产生软 404，见 docs/frontend.md F5）
+    // 404：真实的不存在页面（此前是静默重定向首页，会产生软 404，见 docs/04-前端设计.md F5）
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue') },
   ],
   scrollBehavior(_to, _from, savedPosition) {

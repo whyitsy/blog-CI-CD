@@ -1,0 +1,862 @@
+# 05 · API 接口清单
+
+> **用途**：后端所有 HTTP 端点的权威清单（路径、方法、权限、参数、响应、错误）。
+> **读者**：前端开发者、接口调试者、需要确认某个端点到底存不存在时。
+> **最后核对**：2026-09-11 ｜ **代码依据**：仓库 HEAD（`Blog.WebApi/Controllers/`）
+>
+> 权限模型与错误码的完整说明见 [03-后端设计.md](./03-后端设计.md) §2、§5。
+
+---
+
+## 1. 通用约定
+
+| 项 | 约定 |
+|---|---|
+| 基础路径 | 全部以 `/api` 开头 |
+| 数据格式 | JSON（`Content-Type: application/json`）；**文件上传除外**（`multipart/form-data`） |
+| 字段命名 | camelCase（前后端一致） |
+| 认证 | `Authorization: Bearer <token>` |
+| 时间格式 | ISO 8601 带时区（`DateTimeOffset`） |
+| 主键 | GUID 字符串 |
+
+### 1.1 权限标记说明
+
+| 标记 | 含义 |
+|---|---|
+| 🌐 **公开** | 无需认证 |
+| 🔑 **需登录** | 需任意有效 token（`[Authorize]` 无策略） |
+| ✍️ **ContentWriter** | 需 `Admin` 或 `Author` 角色 |
+| 👑 **AdminOnly** | 仅 `Admin` 角色 |
+
+> ⚠️ **登录入口不承担权限边界**：`/api/auth/login` 不限定角色，
+> 管理员与作者共用。权限由**具体接口上的策略**强制。
+
+### 1.2 状态标记
+
+本文档中所有端点均为 `[已实现]`。若某接口为"规划中"会显式标注。
+
+---
+
+## 2. 统一响应体
+
+**所有**接口（含错误）返回同一结构：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": { }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `code` | `0` = 成功；非 0 = 业务错误码（见 §2.1） |
+| `message` | 成功时为 `"ok"`；失败时是可直接展示给用户的中文提示 |
+| `data` | 成功时的载荷；无返回数据的接口为 `null` |
+
+HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429），不只是 200。
+
+### 2.1 错误码表
+
+| code | HTTP | 含义 |
+|---|---|---|
+| `0` | 200 | 成功 |
+| `4001` | 400 | 参数校验失败（含缺少/非法版本号） |
+| `4002` | 400 | 业务规则不满足（如名称重复） |
+| `4003` | 400 | 资源重复（如邮箱已被占用） |
+| `4010` | 401 | 未认证：缺 token / 无效 / 过期 / 账号被停用 |
+| `4030` | 403 | 无权限：角色不足，或越权访问他人资源 |
+| `4040` | 404 | 资源不存在（**草稿与未发布专栏对无权限者也用此码**） |
+| `4090` | 409 | 乐观锁并发冲突 |
+| `4091` | 429 | 触发限流 |
+| `4130` | 413 | 请求体过大 |
+| `5000` | 500 | 系统异常 |
+
+### 2.2 分页结构
+
+列表类接口统一返回：
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "page": 1,
+  "pageSize": 12,
+  "totalPages": 0
+}
+```
+
+> ⚠️ 字段是 **`total`**，不是 `totalCount`。前端类型 `PagedResult` 已与之对齐。
+> 历史上曾因写成 `totalCount` 导致所有"共 N 篇"渲染为 `undefined`。
+
+### 2.3 乐观锁约定
+
+凡是**更新/删除**已存在资源的接口，都必须携带当前 `version`：
+
+- 通过请求体传：字段名 `version`
+- 通过查询串传：`?version=3`（删除、发布、停用等无请求体的操作）
+
+版本不匹配返回 **409 / code 4090**。缺少或 `< 1` 的版本号返回 **4001**。
+
+**写入语义统一规则**：
+
+| 情形 | 语义 |
+|---|---|
+| 资源/配置 Key **不存在** | 视为新增，忽略 `version` |
+| 资源/配置 Key **已存在** | 走乐观锁，`version` 必须 ≥ 1 |
+
+---
+
+## 3. 认证 `/api/auth`
+
+`AuthController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 1 | POST | `/api/auth/login` | 🌐 公开 | 登录，返回 token 与用户信息 |
+| 2 | GET | `/api/auth/me` | 🔑 需登录 | 当前登录用户 |
+| 3 | POST | `/api/auth/logout` | 🔑 需登录 | 注销（使该账号**所有**旧 token 失效） |
+
+**没有注册端点**（决策 T1）。作者账号由管理员在 `/api/users` 创建。
+
+### 3.1 `POST /api/auth/login`
+
+请求体：
+
+```json
+{ "email": "admin@example.com", "password": "Admin@12345" }
+```
+
+响应 `data`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `token` | string | Access Token |
+| `expiresAt` | string | 过期时间（ISO 8601） |
+| `role` | string | `Admin` 或 `Author`（前端据此决定落地页） |
+| `user` | object | 见 §3.1.1 |
+
+#### 3.1.1 `CurrentUserDto` 结构
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | guid | 账号 id |
+| `email` | string | 登录邮箱 |
+| `role` | string | `Admin` / `Author` |
+| `isActive` | bool | 是否启用 |
+| `authorId` | guid? | 关联的署名对象；可为 null |
+| `authorName` | string? | 关联作者名 |
+| `lastLoginAt` | string? | 最近登录时间 |
+
+> **此结构绝不包含 `PasswordHash`**：后端 DTO 从不返回任何凭据字段。
+
+**错误**：401（`4010`，邮箱或密码错误 / 账号被停用）。
+
+### 3.2 `GET /api/auth/me`
+
+响应 `data`：`CurrentUserDto`（同 §3.1.1）。
+
+**错误**：401（`4010`）。前端启动时用它确认本地 token 是否仍然有效
+（能正确处理"token 未过期但账号已被停用/改密"）。
+
+### 3.3 `POST /api/auth/logout`
+
+无请求体、无响应数据。
+
+**行为**：把该账号的 `TokenVersion + 1`，因此**该账号所有设备上的旧 token 立即失效**。
+
+---
+
+## 4. 文章 `/api/posts`
+
+`PostsController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 4 | GET | `/api/posts` | 🌐 公开* | 分页列表，支持多种过滤 |
+| 5 | GET | `/api/posts/{id}` | 🌐 公开* | 详情（**浏览量 +1**） |
+| 6 | GET | `/api/posts/{id}/readonly` | ✍️ ContentWriter | 详情（**不计数**），编辑器取数据用 |
+| 7 | GET | `/api/posts/archives` | 🌐 公开 | 归档：按年月分组的数组（**非分页**） |
+| 8 | GET | `/api/posts/search` | 🌐 公开 | 全文检索（等价于列表接口带 `keyword`） |
+| 9 | POST | `/api/posts` | ✍️ ContentWriter | 创建 |
+| 10 | PUT | `/api/posts/{id}` | ✍️ ContentWriter | 更新（乐观锁） |
+| 11 | POST | `/api/posts/{id}/publish` | ✍️ ContentWriter | 发布 / 下架（乐观锁） |
+| 12 | DELETE | `/api/posts/{id}` | ✍️ ContentWriter | 软删除（乐观锁） |
+
+\* 带 `includeUnpublished=true` 或访问草稿时需登录，规则见 §4.1。
+
+### 4.1 `GET /api/posts` — 分页列表
+
+查询参数：
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `page` | int | `1` | 页码 |
+| `pageSize` | int | `12` | 每页条数。**上限**：公开 50，管理端（`includeUnpublished`）100 |
+| `categoryId` | guid? | — | 按分类过滤 |
+| `tagId` | guid? | — | 按标签过滤 |
+| `collectionId` | guid? | — | 按专栏过滤 |
+| `authorId` | guid? | — | 按署名作者过滤 |
+| `keyword` | string? | — | 关键词，走**中文全文检索** |
+| `includeUnpublished` | bool | `false` | `true` 时含草稿（**需登录**） |
+| `mine` | bool | `false` | `true` 时只看自己创建的（作者工作区） |
+
+**权限细节**：
+
+| 情形 | 行为 |
+|---|---|
+| 匿名 + `includeUnpublished=false` | 只返回已发布文章 |
+| `includeUnpublished=true` + 非 Admin | 强制限定为**当前账号创建的**文章；未登录则 **403** |
+| `mine=true` + 非自己 | 403 |
+| Admin | 不受上述限制 |
+
+**响应 `data`**：`PagedResult<PostCardDto>`（结构见 §2.2）
+
+`PostCardDto`：
+
+| 字段 | 类型 |
+|---|---|
+| `id` | guid |
+| `title` | string |
+| `summary` | string |
+| `coverImage` | string |
+| `categoryId` | guid? |
+| `categoryName` | string? |
+| `tags` | `[{id, name}]` |
+| `publishedAt` | string? |
+| `viewCount` | int |
+
+### 4.2 `GET /api/posts/{id}` — 详情（计数）
+
+**行为**：每次调用让 `ViewCount + 1`（数据库侧原子自增，**跳过乐观锁**），
+并同步刷新详情缓存。
+
+**草稿保护**：未发布文章仅 Admin 与**创建者账号**可读；
+不可读时返回 **404**（不是 403，避免探测存在性）。
+
+**响应 `data`**：`PostDetailDto`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | guid | |
+| `title` | string | |
+| `content` | string | Markdown 原文 |
+| `summary` | string | |
+| `coverImage` | string | |
+| `categoryId` | guid? | |
+| `categoryName` | string? | |
+| `tags` | `[{id, name}]` | |
+| `collections` | `[{id, title, slug}]` | 所属专栏 |
+| `authorId` | guid | 署名作者 |
+| `authorName` | string? | |
+| `authorAvatar` | string? | |
+| `createdByUserId` | guid? | **归属校验用**（前端据此判断"能不能编辑"） |
+| `publishedAt` | string? | `null` = 草稿 |
+| `updatedAt` | string? | |
+| `viewCount` | int | |
+| `wordCount` | int | |
+| `version` | int | **乐观锁版本号，写操作必须回传** |
+
+### 4.3 `GET /api/posts/{id}/readonly` — 详情（不计数）
+
+与 §4.2 返回结构完全相同，两点区别：
+
+1. **不让浏览量 +1**（避免"后台每点一次编辑就 +1"污染统计）
+2. **必须登录**（ContentWriter 策略）
+
+管理端 / 编辑器取数据一律用这个端点。未发布文章仍受草稿权限保护。
+
+### 4.4 `GET /api/posts/archives` — 归档
+
+无参数。**返回数组而非分页结构**。
+
+响应 `data`：`ArchiveGroupDto[]`
+
+```json
+[
+  { "year": 2026, "month": 9, "items": [ { "id": "...", "title": "...", "publishedAt": "..." } ] }
+]
+```
+
+### 4.5 `GET /api/posts/search` — 全文检索
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `keyword` | string | **必填** | 关键词 |
+| `page` | int | `1` | |
+| `pageSize` | int | `12` | |
+
+**响应 `data`**：`PagedResult<PostCardDto>`
+
+> **当前限制**：结果按**发布时间倒序**，没有相关度排序（`ts_rank` 翻译受限）。
+> 详见 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §3。
+>
+> **限流**：此路径命中 `search` 规则（容量 20，速率 2/秒），
+> 是全站最严格的限流规则。
+
+### 4.6 `POST /api/posts` — 创建
+
+权限：✍️ ContentWriter
+
+请求体 `CreatePostRequest`：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `title` | string | ✅ | ≤200 字符 |
+| `content` | string | ✅ | Markdown |
+| `summary` | string? | — | **留空则自动取正文前 50 字**；填写则以填写内容为准 |
+| `coverImage` | string? | — | |
+| `categoryId` | guid? | — | 分类不存在返回 404 |
+| `tagIds` | guid[]? | — | 存在非法 id 返回 4001 |
+| `collectionIds` | guid[]? | — | 所属专栏（可多个，多对多） |
+| `authorId` | guid? | — | **仅管理员可指定**；作者登录时忽略（强制为自己） |
+| `publish` | bool | — | 默认 **`true`**（创建即发布） |
+
+响应 `data`：`PostDetailDto`
+
+### 4.7 `PUT /api/posts/{id}` — 更新
+
+权限：✍️ ContentWriter + **归属校验**（非 Admin 只能改自己创建的 → 否则 403）
+
+请求体 `UpdatePostRequest`：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `title` | string | ✅ | |
+| `content` | string | ✅ | |
+| `summary` | string? | — | 规则同创建 |
+| `coverImage` | string? | — | |
+| `categoryId` | guid? | — | |
+| `tagIds` | guid[]? | — | |
+| `collectionIds` | guid[]? | — | |
+| `version` | int | ✅ | 乐观锁版本号 |
+
+**注意**：更新接口**不含 `publish`**，发布/下架走 §4.8 的独立端点。
+
+响应 `data`：`PostDetailDto`
+
+**错误**：403（不是自己的文章）、404、409（版本冲突）
+
+### 4.8 `POST /api/posts/{id}/publish` — 发布 / 下架
+
+权限：✍️ ContentWriter + 归属校验
+
+查询参数（**注意是查询串，不是请求体**）：
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `version` | int | **必填** | 乐观锁版本号 |
+| `publish` | bool | `true` | `true` = 发布，`false` = 下架 |
+
+**行为**：发布是**幂等**的——重复发布不会覆盖首次发布时间（否则归档排序会被打乱）。
+
+响应 `data`：`PostDetailDto`
+
+### 4.9 `DELETE /api/posts/{id}` — 软删除
+
+权限：✍️ ContentWriter + 归属校验
+
+查询参数：`version`（int，必填）
+
+响应 `data`：`null`
+
+**行为**：软删除（置 `IsDeleted`），数据保留。列表与详情均不再可见。
+
+---
+
+## 5. 作者 `/api/authors`
+
+`AuthorsController`
+
+> **注意语义**：这里的"作者"是**内容层的署名对象**，不是登录账号。
+> 账号管理在 `/api/users`（§10）。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 13 | GET | `/api/authors` | 🌐 公开 | 作者列表 |
+| 14 | GET | `/api/authors/{id}` | 🌐 公开 | 单个作者 |
+| 15 | GET | `/api/authors/me` | ✍️ ContentWriter | 当前账号的署名身份 |
+| 16 | POST | `/api/authors` | 👑 AdminOnly | 创建作者 |
+| 17 | PUT | `/api/authors/{id}` | ✍️ ContentWriter | 更新（管理员可改任何人，作者只能改自己） |
+| 18 | DELETE | `/api/authors/{id}` | 👑 AdminOnly | 软删除作者 |
+
+`AuthorDto`：
+
+| 字段 | 类型 |
+|---|---|
+| `id` | guid |
+| `name` | string |
+| `email` | string |
+| `avatar` | string |
+| `bio` | string |
+| `createdAt` | string |
+| `version` | int |
+
+### 5.1 `GET /api/authors/me`
+
+**权限**：✍️ ContentWriter
+
+**行为**：返回当前登录账号关联的署名对象。
+
+**错误**：**404** —— 当账号未关联任何作者时，消息为
+"当前账号未关联作者，请联系管理员在「账号管理」中为你关联署名身份"。
+
+> 这是"个人资料"页的取数端点。前端应把 404 当作"未关联"的正常状态处理，
+> 而不是当作错误弹窗。
+
+### 5.2 `PUT /api/authors/{id}` — 更新
+
+**权限**：✍️ ContentWriter，但服务端进一步判断：
+
+| 请求者 | 允许修改 |
+|---|---|
+| Admin | 任何作者 |
+| Author | **只有自己关联的那位作者**（按 `ICurrentUser.AuthorId` 判定） |
+
+越权时返回 **403**，消息"无权修改他人的作者资料"。
+
+请求体 `UpdateAuthorRequest`：
+
+```json
+{ "name": "...", "email": "...", "bio": "...", "avatar": "...", "version": 1 }
+```
+
+> 注意：这是**署名信息**的更新，`email` 是展示用联系方式，
+> **不是登录邮箱**（登录邮箱在 `/api/users` 改）。
+
+### 5.3 `DELETE /api/authors/{id}` — 软删除
+
+**权限**：👑 AdminOnly　**查询参数**：`version`（必填）
+
+**行为**：软删除作者。其署名文章的 `AuthorId` 由 **SetNull** 置空，
+**文章保留**（不会连带删文章）。
+
+---
+
+## 6. 分类 `/api/categories`
+
+`CategoriesController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 19 | GET | `/api/categories` | 🌐 公开 | 列表（含文章数） |
+| 20 | POST | `/api/categories` | ⚠️ **当前公开** | 创建 |
+| 21 | PUT | `/api/categories/{id}` | ⚠️ **当前公开** | 更新（乐观锁） |
+| 22 | DELETE | `/api/categories/{id}` | ⚠️ **当前公开** | 软删除（乐观锁） |
+
+> ⚠️ **`CategoriesController` 目前完全没有 `[Authorize]`**，三个写接口匿名可调用。
+> 设计意图是"仅 Admin"（与专栏、账号管理一致），但**属性遗漏未加**。
+> 见 §9.4 的安全缺口汇总与 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §1。
+>
+> 前端侧仍按"仅 Admin"处理：作者角色在编辑器里看不到"快速新建分类"入口
+> （用 `canManageTaxonomy` 控制）。**但前端隐藏入口不是安全边界**——
+> 直接调用接口依然能成功，这正是必须补后端属性的原因。
+
+`CategoryDto`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | guid | |
+| `name` | string | ≤100 字符，唯一（软删除后可重建同名） |
+| `postCount` | int | 文章数 |
+| `version` | int | |
+
+- **创建** 请求体：`{ "name": "..." }`
+- **更新** 请求体：`{ "name": "...", "version": 1 }`
+- **删除** 查询参数：`?version=1`
+
+**错误**：4002（名称重复）
+
+---
+
+## 7. 标签 `/api/tags`
+
+`TagsController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 23 | GET | `/api/tags` | 🌐 公开 | 列表（含文章数） |
+| 24 | POST | `/api/tags` | ⚠️ **当前公开** | 创建 |
+| 25 | PUT | `/api/tags/{id}` | ⚠️ **当前公开** | 更新（乐观锁） |
+| 26 | DELETE | `/api/tags/{id}` | ⚠️ **当前公开** | 软删除（乐观锁） |
+
+结构与分类完全对称，**包括"写接口缺少 `[Authorize]`"这一缺口**（见 §9.4）。
+`TagDto`：`{ id, name, postCount, version }`。
+`name` 上限 **50** 字符（比分类的 100 短）。
+
+---
+
+## 8. 专栏 `/api/collections`
+
+`CollectionsController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 27 | GET | `/api/collections` | 🌐 公开* | 列表 |
+| 28 | GET | `/api/collections/{slug}` | 🌐 公开* | 详情（按 slug，含该专栏文章） |
+| 29 | GET | `/api/collections/id/{id}` | 👑 AdminOnly | 按 id 取详情（管理端，含未发布） |
+| 30 | POST | `/api/collections` | 👑 AdminOnly | 创建 |
+| 31 | PUT | `/api/collections/{id}` | 👑 AdminOnly | 更新（乐观锁） |
+| 32 | DELETE | `/api/collections/{id}` | 👑 AdminOnly | 软删除（乐观锁） |
+| 33 | PUT | `/api/collections/{id}/posts` | 👑 AdminOnly | **整体编排**专栏内文章与顺序 |
+
+### 8.1 `GET /api/collections`
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `includeUnpublished` | bool | `false` | `true` 需 **Admin**，非 Admin 传 true 得 **403** |
+
+`CollectionDto`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | guid | |
+| `title` | string | ≤200 |
+| `slug` | string | ≤200，唯一，用于 URL |
+| `description` | string | ≤500 |
+| `coverImage` | string | |
+| `sortOrder` | int | 专栏之间排序 |
+| `isPublished` | bool | |
+| `postCount` | int | **只统计已发布文章** |
+| `version` | int | |
+
+### 8.2 `GET /api/collections/{slug}` — 详情
+
+`CollectionDetailDto` = `CollectionDto` + `posts: CollectionPostItemDto[]`
+
+`CollectionPostItemDto`：`{ id, title, summary, coverImage, publishedAt, viewCount, sortOrder }`
+
+**排序**：按 `PostCollection.SortOrder`（专栏内人为编排的顺序），**不是发布时间**。
+
+**未发布保护**：`isPublished = false` 时，**非 Admin 得到 404**（不暴露存在性）。
+
+### 8.3 `GET /api/collections/id/{id}` — 管理端详情
+
+权限：👑 AdminOnly
+
+与 §8.2 分开的原因：把"未发布的可见性判断"从公开路径里彻底移出去，
+管理端可以无条件取到完整数据（含未发布）。
+
+### 8.4 `PUT /api/collections/{id}/posts` — 整体编排
+
+权限：👑 AdminOnly
+
+请求体 `SetCollectionPostsRequest`：
+
+```json
+{ "postIds": ["guid1", "guid2"], "version": 1 }
+```
+
+**语义**：**整体覆盖**该专栏的文章集合——`postIds` 的**顺序即专栏内顺序**
+（数组下标写入 `SortOrder`）。不在列表中的文章会被移出该专栏。
+
+响应 `data`：`CollectionDetailDto`
+
+**创建/更新请求体**：
+
+- 创建 `CreateCollectionRequest`：`{ title, slug, description, coverImage, sortOrder, isPublished }`
+- 更新 `UpdateCollectionRequest`：同上 + `version`
+- 删除：查询参数 `?version=1`
+
+---
+
+## 9. 站点 `/api/site`
+
+`SiteController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 34 | GET | `/api/site/config` | 🌐 公开 | 首屏配置聚合 |
+| 35 | PUT | `/api/site/config` | ⚠️ 见 §9.4 | 逐项更新配置（乐观锁） |
+| 36 | GET | `/api/site/social-links` | 🌐 公开* | 社交链接 |
+| 37 | PUT | `/api/site/social-links` | ⚠️ 见 §9.4 | 批量新增/更新 |
+| 38 | DELETE | `/api/site/social-links/{id}` | ⚠️ 见 §9.4 | 软删除（乐观锁） |
+| 39 | GET | `/api/site/stats` | 🌐 公开 | Footer 统计 |
+
+### 9.1 `GET /api/site/config`
+
+`SiteConfigDto`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `siteName` | string | 站点名 |
+| `heroSubtitles` | string[] | 打字机文案列表 |
+| `heroBackground` | string? | Hero 背景图 URL |
+| `foundingDate` | string? | 建站日期 |
+| `versions` | `Record<string, number>` | **各配置项当前的版本号**（`Key -> Version`） |
+
+> `versions` 里**缺失的 Key** 表示该配置项尚未创建，保存时版本号传 `0`。
+
+### 9.2 `PUT /api/site/config` — 逐项更新
+
+请求体 `UpdateSiteConfigRequest`：
+
+```json
+{ "key": "SiteName", "value": "新站点名", "version": 1 }
+```
+
+**语义**：只更新**一个** Key，不是整体替换。
+
+| Key | 值格式 |
+|---|---|
+| `SiteName` | 字符串 |
+| `HeroSubtitles` | **JSON 数组字符串**，如 `["a","b"]` |
+| `FoundingDate` | `yyyy-MM-dd` |
+| `HeroBackground` | URL |
+
+写入语义遵循 §2.3 的统一规则：Key 不存在 = 新增（忽略 version），
+已存在 = 乐观锁（`version` 必须 ≥ 1，否则 4001）。
+
+响应 `data`：更新后的完整 `SiteConfigDto`
+
+### 9.3 `GET /api/site/social-links`
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `includeHidden` | bool | `false` | 管理端配置页传 `true` 以同时返回隐藏项 |
+
+`SocialLinkDto`：`{ id, name, icon, url, sortOrder, isVisible, version }`
+
+> ⚠️ **`includeHidden` 目前不校验权限**——匿名也能传 `true` 拿到隐藏项。
+> 隐藏项只是前端不显示，不是敏感数据，因此风险低。见 §9.4。
+
+### 9.4 ⚠️ 安全缺口汇总（写接口缺少鉴权）
+
+以下是**当前代码里确实缺少 `[Authorize]` 的写接口**。它们的**设计意图都是"仅 Admin / 仅 ContentWriter"**，
+但属性遗漏未加，导致匿名可调用。这是本项目目前最严重的技术债。
+
+| 端点 | 设计意图 | 当前实际 |
+|---|---|---|
+| `POST /api/categories` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `PUT /api/categories/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `DELETE /api/categories/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `POST /api/tags` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `PUT /api/tags/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `DELETE /api/tags/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `PUT /api/site/config` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `PUT /api/site/social-links` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `DELETE /api/site/social-links/{id}` | 👑 AdminOnly | ⚠️ 匿名可调用 |
+| `POST /api/files/upload` | ✍️ ContentWriter（推测） | ⚠️ 匿名可调用 |
+
+**影响**：
+
+- 任何人都能增删改分类、标签
+- 任何人都能改站点名称、首屏文案、背景图、社交链接
+- 任何人都能往服务器上传文件（可被用来耗尽磁盘）
+
+**为什么前端看不到问题**：前端的按钮可见性由角色控制（`canManageTaxonomy`、路由守卫），
+所以正常点界面时看不出异常。**但前端隐藏入口不是安全边界**，直接发请求就能绕过。
+
+**修复方式**（逐个加属性即可，无需改逻辑）：
+
+```csharp
+// CategoriesController / TagsController 的写 action
+[HttpPost]
+[Authorize(Policy = "AdminOnly")]   // ← 补这一行
+
+// SiteController 的三个写 action 同理
+// FilesController.Upload 至少要求 ContentWriter
+```
+
+> 注意 `PUT /api/site/social-links` 的管理端读接口 `GET /api/site/social-links?includeHidden=true`
+> **同样不校验权限**——但隐藏项不是敏感数据（前端只是不展示），风险远低于写接口。
+>
+> 完整技术债清单见 [09-已知限制与技术债.md](./09-已知限制与技术债.md) §1。
+
+### 9.5 `PUT /api/site/social-links` — 批量保存
+
+请求体：`UpsertSocialLinkRequest[]`
+
+```json
+[
+  { "id": null, "name": "GitHub", "icon": "github", "url": "https://...", "sortOrder": 0, "isVisible": true, "version": null }
+]
+```
+
+| 字段 | 说明 |
+|---|---|
+| `id` | `null` = 新增 |
+| `version` | 新增时传 `null`；更新时必须携带当前版本 |
+
+响应 `data`：保存后的完整 `SocialLinkDto[]`
+
+### 9.6 `DELETE /api/site/social-links/{id}`
+
+查询参数：`version`（必填）。软删除。
+
+### 9.7 `GET /api/site/stats`
+
+`SiteStatsDto`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `siteDays` | int | 建站天数（由 `FoundingDate` 计算） |
+| `totalPosts` | int | 文章总数 |
+| `totalWords` | long | 总字数 |
+| `totalViews` | int | 总浏览量 |
+| `tagCount` | int | 标签数 |
+| `categoryCount` | int | 分类数 |
+
+---
+
+## 10. 账号 `/api/users`
+
+`UsersController` — **整个控制器仅管理员可访问**（类级 `[Authorize(Policy = "AdminOnly")]`）
+
+> 这是**作者账号的唯一创建入口**（决策 T1：作者不开放自助注册）。
+> 响应 DTO 不含任何凭据字段。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 40 | GET | `/api/users` | 👑 AdminOnly | 账号列表 |
+| 41 | GET | `/api/users/{id}` | 👑 AdminOnly | 单个账号 |
+| 42 | POST | `/api/users` | 👑 AdminOnly | 创建账号 |
+| 43 | PUT | `/api/users/{id}` | 👑 AdminOnly | 更新角色/关联作者/启用状态 |
+| 44 | POST | `/api/users/{id}/reset-password` | 👑 AdminOnly | 重置密码 |
+| 45 | POST | `/api/users/{id}/disable` | 👑 AdminOnly | 停用账号 |
+
+`UserDto`：
+
+| 字段 | 类型 |
+|---|---|
+| `id` | guid |
+| `email` | string |
+| `role` | string |
+| `isActive` | bool |
+| `authorId` | guid? |
+| `authorName` | string? |
+| `lastLoginAt` | string? |
+| `createdAt` | string |
+| `version` | int |
+
+### 10.1 `POST /api/users` — 创建账号
+
+请求体 `CreateUserRequest`：
+
+```json
+{ "email": "author@example.com", "password": "...", "role": "Author", "authorId": "guid" }
+```
+
+| 字段 | 说明 |
+|---|---|
+| `role` | `Admin` 或 `Author` |
+| `authorId` | `role=Author` 时应指定关联的署名作者，即"给某位作者开通登录" |
+
+**错误**：4003（邮箱已被占用）
+
+### 10.2 `PUT /api/users/{id}` — 更新账号
+
+请求体 `UpdateUserRequest`：`{ role, authorId, isActive, version }`
+
+**不修改凭据**（密码走 §10.3）。
+
+### 10.3 `POST /api/users/{id}/reset-password` — 重置密码
+
+请求体 `ResetPasswordRequest`：`{ newPassword, version }`
+
+**行为**：改密码并把 `TokenVersion + 1`，因此**该账号所有旧 token 立即失效**
+（已登录的设备会被踢下线）。
+
+### 10.4 `POST /api/users/{id}/disable` — 停用账号
+
+查询参数：`version`（必填）
+
+**行为**：设 `IsActive = false`，同时 `TokenVersion + 1`（立即踢下线）。
+**不物理删除**，保留审计线索。
+
+---
+
+## 11. 文件 `/api/files`
+
+`FilesController`
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| 46 | POST | `/api/files/upload` | ⚠️ 🌐 公开 | 上传文件，返回可访问 URL |
+| 47 | GET | `/api/files/{**path}` | 🌐 公开 | 读取文件 |
+
+> ⚠️ **上传接口当前无鉴权**（该控制器没有 `[Authorize]`），匿名可上传。
+> 与分类/标签/站点配置的写接口同属"遗留未鉴权"，见 §9.4。
+> 修复方式：上传至少要求 `ContentWriter`（或 `AdminOnly`）。
+
+### 11.1 `POST /api/files/upload`
+
+- Content-Type：`multipart/form-data`，字段名 **`file`**
+- 框架层上限：`[RequestSizeLimit(50MB)]`
+- 业务层上限：`FileStorage:MaxFileSize`（默认 10MB），超出返回 4001
+
+响应 `data`：
+
+```json
+{ "url": "/api/files/2026/09/xxx.webp", "storedBytes": 12345, "originalBytes": 45678, "converted": true }
+```
+
+| 字段 | 说明 |
+|---|---|
+| `url` | 可直接用于 `coverImage` / `avatar` 的相对 URL |
+| `storedBytes` | 实际存储字节数 |
+| `originalBytes` | 原始字节数 |
+| `converted` | 是否发生了图片格式转换（转 WebP） |
+
+**错误**：4001（文件为空 / 超限 / 不支持的格式）
+
+### 11.2 `GET /api/files/{**path}` — 读取
+
+- 命中时下发 `Cache-Control: public,max-age=86400`
+- 未命中返回 **404** + 统一响应体，**且不下发缓存头**
+
+> ⚠️ 历史 Bug：此前用 `[ResponseCache]` 标注 action，导致"文件不存在"的 404 也被
+> 缓存一整天，文件补回来后用户仍看到空白。现在改为**确认命中后**才设置响应头。
+
+**路径穿越防护**：`LocalFileStorageService` 校验解析后的绝对路径仍在存储根目录内。
+
+---
+
+## 12. 端点统计
+
+| 控制器 | 端点数 |
+|---|---|
+| AuthController | 3 |
+| PostsController | 9 |
+| AuthorsController | 6 |
+| CategoriesController | 4 |
+| TagsController | 4 |
+| CollectionsController | 7 |
+| SiteController | 6 |
+| UsersController | 6 |
+| FilesController | 2 |
+| **合计** | **47** |
+
+另有根路径 `GET /`（返回 `{ name: "Blog API", status: "running" }`），
+不计入业务端点。
+
+---
+
+## 13. 前端调用入口对照
+
+| 前端文件 | 对应后端控制器 |
+|---|---|
+| `src/api/auth.ts` | Auth |
+| `src/api/posts.ts` | Posts |
+| `src/api/authors.ts` | Authors |
+| `src/api/categories.ts` | Categories |
+| `src/api/tags.ts` | Tags |
+| `src/api/collections.ts` | Collections |
+| `src/api/site.ts` | Site |
+| `src/api/users.ts` | Users |
+| `src/api/files.ts` | Files |
+| `src/api/http.ts` | 统一封装（含错误码常量） |
+
+---
+
+## 14. 与代码的对应关系
+
+| 内容 | 文件 |
+|---|---|
+| 全部端点定义 | `Blog.Backend/Blog.WebApi/Controllers/*.cs` |
+| 请求/响应 DTO | `Blog.Backend/Blog.Application/Services/*/*Dtos.cs` |
+| 错误码 | `Blog.Backend/Blog.Application/Common/ErrorCodes.cs` |
+| 授权策略 | `Blog.Backend/Blog.WebApi/Program.cs` |
+| 前端类型对齐 | `Blog.FrontEnd/src/types/index.ts` |
+| 前端错误码常量 | `Blog.FrontEnd/src/api/http.ts` |

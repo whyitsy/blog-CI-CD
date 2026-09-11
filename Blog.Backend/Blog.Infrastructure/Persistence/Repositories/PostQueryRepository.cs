@@ -11,7 +11,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
     /// </summary>
     public class PostQueryRepository : IPostQueryRepository
     {
-        /// <summary>中文全文检索配置名（由迁移创建，见 docs/backend.md §5.4）</summary>
+        /// <summary>中文全文检索配置名（由迁移创建，见 docs/03-后端设计.md §7.4 / T12）</summary>
         private const string ChineseTextSearchConfig = "chinese";
 
         private readonly BlogDbContext _context;
@@ -70,7 +70,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
             // TODO(相关度排序)：生成列已带 setweight 权重（标题 A > 摘要 B > 正文 C），
             // 但 EF Core 对 ts_rank 的翻译在“影子属性 + 参数化 tsquery”形态下会退回客户端求值，
             // 因此暂不做相关度排序；命中集合本身已由 GIN 索引加速。
-            // 后续可用原生 SQL 或映射 ts_rank 用户函数补上（见 docs/backend.md §5.4）。
+            // 后续可用原生 SQL 或映射 ts_rank 用户函数补上（见 docs/03-后端设计.md §7.4 / T12）。
             var ordered = source
                 .OrderByDescending(p => p.PublishedAt)
                 .ThenByDescending(p => p.Id);

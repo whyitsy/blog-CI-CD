@@ -3,7 +3,7 @@ using Blog.Domain.Entities.Base;
 namespace Blog.Domain.Entities
 {
     /// <summary>
-    /// 账号角色。只有两档，不引入细粒度 RBAC（见 docs/tech.md §2.4）。
+    /// 账号角色。只有两档，不引入细粒度 RBAC（见 docs/03-后端设计.md §5.4）。
     /// </summary>
     public enum UserRole
     {
@@ -17,7 +17,7 @@ namespace Blog.Domain.Entities
     /// <summary>
     /// 后台/前台登录账号。
     ///
-    /// 与 <see cref="Author"/> 的分工（见 docs/tech.md §2.2）：
+    /// 与 <see cref="Author"/> 的分工（见 docs/10-决策记录.md §2.1 / T1）：
     ///   - User 是「账号」，承载登录凭据（PasswordHash）与角色
     ///   - Author 是「内容属性」，只承载署名展示信息（姓名/头像/简介），与 Post/Tag/Category 同层
     /// 二者通过可空的 <see cref="AuthorId"/> 弱关联，允许存在没有账号的作者。
@@ -30,7 +30,7 @@ namespace Blog.Domain.Entities
         /// <summary>
         /// 密码哈希。格式由 IPasswordHasher 定义，当前为
         /// pbkdf2-sha512$迭代次数$base64盐$base64哈希
-        /// 绝不存明文，也绝不用 MD5/SHA 直接哈希（见 docs/tech.md §2.6）。
+        /// 绝不存明文，也绝不用 MD5/SHA 直接哈希（见 docs/08-开发知识点.md §16.4）。
         /// </summary>
         public string PasswordHash { get; private set; } = string.Empty;
 
@@ -52,7 +52,7 @@ namespace Blog.Domain.Entities
         /// <summary>
         /// Token 版本号。签发 JWT 时写入 claim，校验时与库中值比对；
         /// 改密码或「踢下线」只需 +1，即可让该用户所有旧 token 立即失效。
-        /// 相比 Redis 黑名单，它不引入新的运行时依赖，多实例下也有效（见 docs/backend.md §6.5）。
+        /// 相比 Redis 黑名单，它不引入新的运行时依赖，多实例下也有效（见 docs/08-开发知识点.md §15.3）。
         /// </summary>
         public int TokenVersion { get; private set; } = 1;
 

@@ -9,7 +9,7 @@ namespace Blog.Infrastructure.Security
     /// 存储格式（自描述，便于将来提升迭代次数后仍能校验旧密码）：
     ///     pbkdf2-sha512${iterations}${base64(salt)}${base64(hash)}
     ///
-    /// 安全要点（见 docs/tech.md §2.6）：
+    /// 安全要点（见 docs/08-开发知识点.md §16.4）：
     ///   - 每用户独立随机盐（16 字节）
     ///   - 迭代次数可调；登录成功时若发现参数过旧可静默升级（NeedsRehash）
     ///   - 校验用 FixedTimeEquals，防时序攻击

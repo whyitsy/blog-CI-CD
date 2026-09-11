@@ -3,7 +3,7 @@ import type { AuthorDto, UpdateAuthorPayload } from '@/types'
 
 /**
  * 作者（**内容层**的署名对象，不是登录账号）。
- * 与账号（`api/users.ts`）分工见 docs/tech.md §2.2。
+ * 与账号（`api/users.ts`）分工见 docs/10-决策记录.md §2.2。
  */
 
 export interface CreateAuthorPayload {

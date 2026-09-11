@@ -27,7 +27,7 @@ namespace Blog.Application.Interfaces
     {
         public const string SectionName = "Deployment";
 
-        /// <summary>实例数量。> 1 时强制要求 Redis（见 docs/backend.md §4.5 / T5）</summary>
+        /// <summary>实例数量。> 1 时强制要求 Redis（见 docs/03-后端设计.md §11 / T5）</summary>
         public int InstanceCount { get; set; } = 1;
 
         /// <summary>是否强制要求 Redis（即使 InstanceCount 为 1 也可显式要求）</summary>

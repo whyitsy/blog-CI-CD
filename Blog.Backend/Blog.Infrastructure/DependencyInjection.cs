@@ -79,7 +79,7 @@ namespace Blog.Infrastructure
             services.AddSingleton<ITokenService, JwtTokenService>();
             services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
-            // 多实例 + 无 Redis 属于危险配置：限流阈值会被放大到实例数倍（见 docs/backend.md §4.5）。
+            // 多实例 + 无 Redis 属于危险配置：限流阈值会被放大到实例数倍（见 docs/03-后端设计.md §11）。
             // 在启动期显式校验并直接失败，而不是运行期静默降级。
             DeploymentGuard.Validate(configuration);
 

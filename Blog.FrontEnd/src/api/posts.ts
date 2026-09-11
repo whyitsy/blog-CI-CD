@@ -31,7 +31,7 @@ export function getPostDetail(id: string): Promise<PostDetailDto> {
 
 /**
  * 只读详情：**不会**让浏览量 +1，供管理端/编辑器取数据（含 version）用。
- * 需要登录。用于修掉「后台点一次编辑就 +1」造成的浏览量失真（见 docs/business.md Q12）。
+ * 需要登录。用于修掉「后台点一次编辑就 +1」造成的浏览量失真（见 docs/10-决策记录.md Q12）。
  */
 export function getPostDetailReadonly(id: string): Promise<PostDetailDto> {
   return get(`/api/posts/${id}/readonly`)

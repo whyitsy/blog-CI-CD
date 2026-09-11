@@ -12,7 +12,7 @@ namespace Blog.Infrastructure.Security
     /// 在当前请求内解析并校验登录用户，结果放入 <see cref="HttpContext.Items"/>，
     /// 供 <see cref="HttpCurrentUser"/> 同步读取，避免在属性 getter 里同步阻塞异步查询。
     ///
-    /// 校验内容（对应 docs/tech.md §2.5 坑 1 的补偿方案）：
+    /// 校验内容（见 docs/08-开发知识点.md §15.3）：
     ///   1. JWT 签名与过期时间 —— 由 JwtBearer 中间件完成
     ///   2. 账号存在且未被软删除
     ///   3. 账号处于启用状态

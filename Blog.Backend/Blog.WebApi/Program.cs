@@ -101,7 +101,7 @@ try
             };
         });
 
-    // 授权策略：两档角色（见 docs/tech.md §2.4）
+    // 授权策略：两档角色（见 docs/03-后端设计.md §5.4）
     builder.Services.AddAuthorization(options =>
     {
         options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>

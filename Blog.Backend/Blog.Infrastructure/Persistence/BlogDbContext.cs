@@ -19,7 +19,7 @@ namespace Blog.Infrastructure.Persistence
         public DbSet<SocialLink> SocialLinks { get; set; }
         public DbSet<SiteConfig> SiteConfigs { get; set; }
 
-        /// <summary>登录账号（与 Author 分离，见 docs/tech.md §2.2）</summary>
+        /// <summary>登录账号（与 Author 分离，见 docs/10-决策记录.md §2.1 / T1）</summary>
         public DbSet<User> Users { get; set; }
 
         /// <summary>专栏</summary>
@@ -101,7 +101,7 @@ namespace Blog.Infrastructure.Persistence
                 // chinese 检索配置），这里只声明**影子属性**并告诉 EF「由数据库生成」。
                 //
                 // 为什么用影子属性而不是 Post 上的实体属性：Blog.Domain 必须保持零框架依赖
-                // （见 docs/backend.md §2.1），而 NpgsqlTsVector 来自 Npgsql，
+                // （见 docs/03-后端设计.md §1.1），而 NpgsqlTsVector 来自 Npgsql，
                 // 因此该列只在 Infrastructure 层可见，查询时用 EF.Property 访问。
                 entity.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
                       .HasColumnName("SearchVector")

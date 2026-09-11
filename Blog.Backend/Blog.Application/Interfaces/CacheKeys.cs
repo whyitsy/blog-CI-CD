@@ -5,7 +5,7 @@ namespace Blog.Application.Interfaces
 {
     /// <summary>
     /// 缓存 key 规范：blog:{模块}:{操作}:v{版本}:{固定维度}:{可选hash}
-    /// 详见 docs/backend.md §4.2 与 docs/tech.md §4.4。
+    /// 详见 docs/03-后端设计.md §6.3。
     ///
     /// 约定：
     ///   - 固定前缀 blog:，便于前缀失效，也避免与其他应用共用 Redis 时冲突
