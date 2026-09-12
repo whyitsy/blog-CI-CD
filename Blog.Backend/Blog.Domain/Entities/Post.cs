@@ -91,8 +91,4 @@ public class Post : BaseEntity
         PublishedAt = null;
     }
 
-    public void IncrementViewCount()
-    {
-        ViewCount++;
-    }
 }
