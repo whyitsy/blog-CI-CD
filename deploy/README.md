@@ -202,3 +202,159 @@ docker rm pgsql-old
 ```
 
 备份文件位于 `D:/tmpbuild/pgbackup/blog_stage2_<时间戳>.sql`。
+
+---
+
+## 6. 应用镜像与本地整栈编排（`docker-compose.yml`）
+
+> 记录日期：2026-09-12 ｜ 相关说明见 [../docs/07-开发与运维手册.md](../docs/07-开发与运维手册.md) §8.6
+
+### 6.1 本目录新增的产物
+
+| 文件 | 职责 |
+|---|---|
+| `webapi.Dockerfile` | 后端镜像（多阶段：SDK 构建 → ASP.NET 运行时） |
+| `nginx.Dockerfile` | 前端构建（Node）→ Nginx 网关镜像 |
+| `nginx.conf` | Nginx 站点配置：静态文件 + `/api` 反代 + SPA fallback |
+| `../docker-compose.yml` | 四服务编排：`nginx` / `webapi` / `pgsql` / `redis` |
+| `../.env.example` | 环境变量模板（**含密钥的真实 `.env` 不入库**） |
+| `../.dockerignore` | 构建上下文排除规则（**必需**，见 §6.4） |
+
+### 6.2 为什么要在本地跑「生产形态」
+
+`docs/07` §8.2 预告过三个**只在部署后才暴露**的坑。用这套 compose，
+它们**全部可以在本地复现**，从而在买服务器之前就踩完：
+
+| 坑 | 本地复现方式 |
+|---|---|
+| SPA history fallback | `curl -i http://localhost:8080/post/<id>` —— 配错立刻 404 |
+| `X-Forwarded-For` | 对比带/不带伪造头的限流行为（§6.5 有实测脚本） |
+| 工作目录 | 容器内 `WORKDIR /app` 决定 `logs/` 与 `media/` 落在哪 |
+
+**收益**：远程部署时你只需要面对「服务器环境」这一个变量，而不是两个。
+
+### 6.3 用法
+
+```bash
+# 在仓库根目录
+cp .env.example .env                    # 填好 JWT_SIGNING_KEY 与 POSTGRES_PASSWORD
+docker compose up -d --build            # 首次构建较慢（拉 SDK/Node 镜像）
+docker compose ps                       # 四个服务都应为 healthy
+curl -i http://localhost:8080/health    # 期望 200 + Healthy
+docker compose logs -f webapi           # 看应用日志
+docker compose down                     # 停止（数据在命名卷里，不会丢）
+docker compose down -v                  # ⚠️ 连数据卷一起删
+```
+
+> 端口只发布 `nginx` 的 `8080`。`pgsql` 与 `redis` **刻意不映射到宿主机**：
+> ① 避免与开发用的独立容器 `pgsql`/`redis` 抢占 5432/6379；
+> ② 更接近生产——数据库不该直接对外。
+> 需要直连时用 `docker compose exec pgsql psql -U kky -d blog_stage2`。
+
+### 6.4 ⚠️ 构建踩到的坑（两个都是真实发生过的）
+
+**坑 A：缺少 `.dockerignore` 会让 Windows 的 `obj/` 污染 Linux 构建**
+
+`COPY Blog.Backend/ ./` 会把宿主机上 **Windows 生成的 `obj/`** 一起复制进镜像，
+其中的 `project.assets.json` 记录着 Windows 路径。Linux 容器里 MSBuild 读它直接报错：
+
+```
+error MSB4018: The "ResolvePackageAssets" task failed unexpectedly.
+NuGet.Packaging.Core.PackagingException:
+  Unable to find fallback package folder
+  'C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages'
+```
+
+**注意它的顺序**：`dotnet restore` 先在容器里跑成功了，是**随后的 `COPY` 把正确结果覆盖掉了**。
+这类"文件顺序导致"的失败最难从报错本身看出来。
+
+**解法**：仓库根的 `.dockerignore` 里排除 `**/bin` 与 `**/obj`（已落地）。
+
+**坑 B：Docker Hub 在部分网络下不可达**
+
+`docker compose up` 报 `failed to resolve reference "docker.io/library/redis:7-alpine"`。
+`mcr.microsoft.com`（.NET 官方镜像）通常可达，但 Docker Hub 不一定。
+
+**解法**：给 Docker Desktop 配置 registry mirror（Settings → Docker Engine）：
+
+```json
+{
+  "registry-mirrors": ["https://docker.m.daocloud.io"]
+}
+```
+
+配置后需重启 Docker Desktop。**镜像源地址会随时间失效，本文记录的只是一个 2026-09 仍可用的。**
+
+**坑 C：健康检查写 `localhost` 会让容器永远 `unhealthy`，但服务其实完全正常**
+
+最初 nginx 的健康检查写的是 `wget -qO- http://localhost/`，结果：
+
+```
+wget: can't connect to remote host: Connection refused
+```
+
+而**从宿主机 `curl http://localhost:8080/` 一切正常**。
+
+**根因**：Alpine 里 `localhost` 优先解析成 IPv6 `[::1]`，
+而 nginx 默认的 `listen 80;` **只绑 IPv4**。于是容器内探活失败、外部访问正常。
+
+**解法**（两处都改了，缺一不可）：
+
+| 位置 | 改动 |
+|---|---|
+| `nginx.Dockerfile` / `webapi.Dockerfile` 的 HEALTHCHECK | 地址写 `127.0.0.1`，不写 `localhost` |
+| `nginx.conf` | 加 `listen [::]:80;`，同时监听 IPv6 |
+
+> **这个坑的教训**：「服务能访问」和「探针说健康」是**两个独立的信号**。
+> 只验证前者，你会带着一个永远 unhealthy 的容器上线 ——
+> 而编排系统（Swarm / K8s / 甚至 `depends_on: service_healthy`）会因此拒绝启动下游服务。
+
+### 6.5 验证记录（2026-09-12 实测）
+
+| 检查项 | 结果 |
+|---|---|
+| 四个容器状态 | ✅ `pgsql` / `redis` / `webapi` / `nginx` **全部 `healthy`** |
+| `/health` 经 Nginx 反代 | ✅ `200` + `Healthy` |
+| `/api/site/config` 经 Nginx | ✅ `200`，返回真实种子数据 |
+| 前端首页 | ✅ `200` / `text/html` / 904 字节 |
+| 静态资源缓存头 | ✅ `/assets/*` 返回 `Cache-Control: max-age=31536000` + `public, immutable` |
+| **坑 1** SPA fallback | ✅ `/post/<uuid>`、`/admin/posts/new`、`/collections/xxx` 均返回 index.html；`/assets/不存在.js` 正确 404 |
+| **坑 2** `X-Forwarded-For` | ✅ 修复后：伪造 XFF 连发 28 次 → 26 次被限流（修复前 **0 次**，见 §6.6） |
+| **坑 3** 工作目录与持久化 | ✅ 上传文件写入 `media` 卷（`app` 用户所有）；日志写入 `logs` 卷；`media-seed` 只读回退可用（`GET /api/files/avatar-default.webp` → `200 image/webp`） |
+| 新增坑：上传体积 | ✅ 2 MiB 文件上传成功且在**后端日志中可见**（未设 `client_max_body_size` 时会被 nginx 413 拦掉，后端毫无记录） |
+| 路径穿越防护 | ✅ `/api/files/....//....//etc/passwd` 到达应用后返回 `404 文件不存在` |
+
+### 6.6 ⚠️ 发现并修复的安全缺陷：限流可被绕过
+
+**这是本轮最有价值的发现，且只有把栈真正跑起来才能发现。**
+
+| 测试 | 修复前 | 修复后 |
+|---|---|---|
+| A：正常请求 28 次 | 第 21 次起 `429` ✅ | 同左 ✅ |
+| B：每次伪造不同的 `X-Forwarded-For` | **0 次 `429`**（完全绕过）❌ | **26 次 `429`** ✅ |
+
+**根因是信任边界搞错了**：
+
+1. `nginx.conf` 原先用 `proxy_add_x_forwarded_for`（nginx 文档里的常见范例），
+   它会把**客户端自己发的 `X-Forwarded-For` 保留在前面**再追加真实 IP，
+   头变成 `"<客户端伪造的IP>, <真实IP>"`。
+2. 而 `RateLimitingMiddleware.GetClientIp()` 取的是 `Split(',')[0]` —— **第一段**，
+   也就是**客户端完全可控的那一段**。
+
+于是只要每次请求换一个伪造 IP，每个请求都会拿到一个全新的令牌桶。
+
+**修复**：nginx 侧改用 `$remote_addr` **覆盖**整个头，把不可信输入丢掉：
+
+```nginx
+proxy_set_header X-Forwarded-For $remote_addr;
+```
+
+**前提**：nginx 是唯一入口（本项目拓扑正是如此，`webapi` 不对外发布端口）。
+若将来前面再加 CDN / 云负载均衡，需要改用 `ngx_http_realip_module` 信任上游网段，
+**而不能简单回到追加写法**。
+
+> **更彻底的方案**（`[计划中]`，见 [../docs/09-已知限制与技术债.md](../docs/09-已知限制与技术债.md)）：
+> 应用侧改用 ASP.NET Core 的 `ForwardedHeadersMiddleware`，
+> 通过 `KnownProxies` / `KnownNetworks` 显式声明**只信任哪些代理**发来的转发头。
+> 那才是把"信任边界"表达在代码里，而不是依赖部署配置。
+> 在当前拓扑下 nginx 覆盖已经足够，故未立即实施。
