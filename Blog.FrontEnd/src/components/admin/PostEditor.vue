@@ -180,7 +180,7 @@ function submit() {
 
     <label class="field">
       <span class="field-label">摘要</span>
-      <textarea v-model="summary" rows="2" placeholder="可选：留空将自动从前 100 字截取" />
+      <textarea v-model="summary" rows="2" placeholder="可选：留空将自动取正文前 50 字" />
     </label>
 
     <label class="field">
