@@ -1,0 +1,137 @@
+# ============================================================================
+# 本地「生产形态」整栈编排：Nginx + Kestrel + PostgreSQL(zhparser) + Redis
+#
+# 用法（在仓库根目录）：
+#   cp .env.example .env      # 然后按注释填好密钥
+#   docker compose up -d --build
+#   docker compose ps
+#   curl -i http://localhost:8080/health
+#
+# 为什么要在本地跑这一套：docs/07 §8.2 预告的三个部署坑
+# （SPA history fallback / X-Forwarded-For / 工作目录）在这里**全部可复现**。
+# 在买服务器之前把它们踩完，远程部署时你就只需要面对"服务器环境"这一个变量。
+# ============================================================================
+
+name: blog
+
+services:
+  # ────────────────────────────────────────────────────────── PostgreSQL
+  pgsql:
+    # 同时给 build 与 image：全新克隆的仓库能直接 build 出来，
+    # 已有该镜像时（开发机早就构建过）则直接复用，tag 与 deploy/README.md 保持一致。
+    build:
+      context: .
+      dockerfile: deploy/postgres-zhparser.Dockerfile
+    image: blog-postgres-zhparser:18
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kky}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置，请先 cp .env.example .env}
+      POSTGRES_DB: ${POSTGRES_DB:-blog_stage2}
+
+    volumes:
+      # ⚠️ 挂载点必须是 /var/lib/postgresql，**不是** /var/lib/postgresql/data。
+      #    PG18 的 PGDATA 实际是 /var/lib/postgresql/18/docker，
+      #    写错会让容器以为数据目录为空而重新初始化 —— 表现为"数据看起来丢了"。
+      #    （docs/09 §5.2 记录了这次真实踩坑）
+      - pgdata:/var/lib/postgresql
+
+    # ⚠️ 刻意**不发布端口到宿主机**，两个原因：
+    #    ① 开发机上的独立容器 pgsql/redis 已占用 5432/6379，发布会冲突
+    #    ② 更接近生产：数据库不应直接暴露在外
+    #    需要直连时用：docker compose exec pgsql psql -U kky -d blog_stage2
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kky} -d ${POSTGRES_DB:-blog_stage2}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────────────────── Redis
+  redis:
+    image: redis:7-alpine
+    # 不开端口，原因同上
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────────────────── 后端 API
+  webapi:
+    build:
+      context: .
+      dockerfile: deploy/webapi.Dockerfile
+    image: blog-webapi:local
+
+    depends_on:
+      # ⚠️ 用 condition: service_healthy 而不是默认的 service_started。
+      #    "容器启动了" != "数据库能连了"。
+      #    应用启动时会执行数据库迁移，PG 没就绪就直接崩 —— 这是 CI/部署里
+      #    最常见的随机失败来源（docs/11 §7.2 第 4 点）。
+      pgsql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    environment:
+      # 连接串含密码，绝不写进 appsettings —— 符合 12-Factor 的配置外置。
+      # 容器内主机名是 compose 服务名 pgsql，不是 localhost。
+      ConnectionStrings__DefaultConnection: >-
+        Host=pgsql;Port=5432;Database=${POSTGRES_DB:-blog_stage2};Username=${POSTGRES_USER:-kky};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置}
+
+      # 缺失或短于 32 字节时 Program.cs 会**拒绝启动**（这是刻意设计：弱密钥比启动失败更危险）
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY 未设置，请先 cp .env.example .env}
+      Jwt__Issuer: ${JWT_ISSUER:-blog-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-blog-frontend}
+
+      # 覆盖 appsettings.Production.json 里给容器网络用的默认值（此处显式写出，便于修改）
+      Cache__Provider: Redis
+      Cache__RedisConnection: redis:6379
+
+    volumes:
+      # 上传的图片必须持久化，否则容器一重建全丢
+      - media:/app/media
+      # 日志也持久化，方便 `docker compose logs` 之外直接翻文件
+      - logs:/app/logs
+
+    # 健康检查沿用镜像里的定义（打 /health，会真实校验 PG + zhparser + 迁移 + Redis）。
+    # 需要调参时在这里覆盖，例如排查启动慢的问题：
+    # healthcheck:
+    #   start_period: 90s
+
+    # ── 性能测试时再打开：限制内存能让你复现「容器被 OOM Kill」而不是拖垮宿主机 ──
+    # ── 这也是后面做 LOH / 图片上传内存分析的必要条件（docs/12）──
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1g
+    #       cpus: "1.0"
+
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────────────────── Nginx 网关
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx.Dockerfile
+    image: blog-nginx:local
+
+    depends_on:
+      webapi:
+        # 等后端 /health 通过再起来，避免网关先于后端接收请求
+        condition: service_healthy
+
+    ports:
+      # 只暴露这一个端口。默认 8080 是为了避开开发用的 5173（Vite）与 5131（Kestrel）。
+      - "${HTTP_PORT:-8080}:80"
+
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:
+  logs:

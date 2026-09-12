@@ -26,8 +26,14 @@ Thumbs.db
 # Local env / secrets
 # 说明：Vite 的环境文件分级如下，只有带 .local 的才可能含个人密钥，必须忽略；
 # .env / .env.[mode] 是可共享的默认配置（**不得放密钥**），应入库。
+# 例外见下方「仓库根的 /docker compose 环境文件」——那一份**装的是真实密钥**。
 .env.local
 .env.*.local
+
+# 仓库根的 docker compose 环境文件（**含真实密钥，必须忽略**）
+# 说明：开头的 / 表示只匹配仓库根目录，因此不会影响已入库的 Blog.FrontEnd/.env。
+# 模板见 .env.example（不含密钥，可入库）。
+/.env
 
 # Uploaded media (runtime files)
 Blog.Backend/Blog.WebApi/media/

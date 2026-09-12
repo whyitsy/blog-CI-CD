@@ -1,0 +1,55 @@
+# ============================================================================
+# Docker 构建上下文排除规则
+#
+# 作用范围：**仓库根目录**（两个 Dockerfile 的 context 都是 `.`）。
+#
+# ⚠️ 这个文件不是"优化"，是**必需品**。它的缺失会导致两类问题：
+#
+#   ① 构建错误 —— 宿主机上 Windows 生成的 obj/ 会被 COPY 进镜像，
+#      其中的 project.assets.json 记录着 `C:\Program Files (x86)\...\NuGetPackages`
+#      这类 Windows 路径。Linux 容器里 MSBuild 读它就会报：
+#        MSB4018: Unable to find fallback package folder
+#          'C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages'
+#      （本项目实际踩到过）
+#
+#   ② 上下文巨大 —— bin/obj/node_modules/.git 全都会被打包发给 Docker 守护进程，
+#      构建慢几倍甚至几十倍。
+# ============================================================================
+
+# ── 版本控制与 IDE ────────────────────────────────────────────────
+.git
+.gitattributes
+.gitignore
+.vs
+.idea
+*.user
+*.suo
+
+# ── .NET 构建产物（必须排除，原因见文件头 ①）─────────────────────
+**/bin
+**/obj
+**/TestResults
+artifacts
+
+# ── 前端构建产物 ──────────────────────────────────────────────────
+# dist 由 nginx 镜像**在容器内**重新构建，不需要宿主机的版本
+**/node_modules
+**/dist
+
+# ── 运行期数据（不该进镜像）───────────────────────────────────────
+**/logs
+Blog.Backend/Blog.WebApi/media
+
+# ── 密钥（绝不能进镜像层 —— 镜像层是可以被导出和翻查的）────────────
+.env
+.env.local
+.env.*.local
+
+# ── 不参与构建的内容（排除可显著加快上下文传输）────────────────────
+docs
+deploy/README.md
+Blog.FrontEnd/参考设计规范
+
+# ── 个人文件 ──────────────────────────────────────────────────────
+TODO.md
+我的问题.md
