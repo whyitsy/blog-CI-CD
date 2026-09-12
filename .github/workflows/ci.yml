@@ -1,0 +1,211 @@
+# ============================================================================
+# CI：每次 push / PR 都用一台**干净的 Linux 机器**重跑全部验证
+#
+# 为什么这件事对本项目特别重要（见 docs/11-CI-CD与自动化交付.md §2.1）：
+#   开发环境是 **Windows 编译 + WSL 发命令**，而部署目标是 **Linux + Nginx**。
+#   这个落差只会在部署当天暴露 —— 除非有一台干净的 Linux 机器每次都替你走一遍。
+#
+# 三个作业互不依赖，**并行**运行：
+#   hygiene   行尾检查（最快，秒级失败）
+#   frontend  类型检查 + 构建
+#   backend   编译 + 81 项测试（含 47 项需要真实 PostgreSQL 的集成测试）
+#
+# 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # 允许在 Actions 页面手动触发（排查问题、重跑时用）
+  workflow_dispatch:
+
+# 同一分支上新的推送会取消仍在跑的旧运行，避免排队浪费时间与额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 全局环境变量。
+# 注意：这里**没有任何密钥**，也不需要密钥 ——
+# 集成测试夹具会强制 UseEnvironment("Development")，
+# 因此读到的是 appsettings.Development.json 里的开发签名密钥。
+# 密钥注入是 CD（部署）阶段才需要的事。
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════════
+  # 作业一：卫生检查 —— 最快，期望它最先失败
+  # ══════════════════════════════════════════════════════════════════════
+  hygiene:
+    name: 卫生检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # 把 docs/07 §7.2 的"人肉纪律"变成机器强制。
+      # 仓库历史上真发生过「39 个文件仅因 CRLF/LF 差异被整体纳入提交」。
+      # 这条检查成本最低、收益最高，所以放在第一个作业里。
+      - name: 检查行尾是否被写成 CRLF
+        run: |
+          if git ls-files --eol | grep -q 'w/crlf'; then
+            echo "::error::检测到 CRLF 行尾，请检查编辑器设置（见 docs/07 §7.2）"
+            echo "--- 受影响文件 ---"
+            git ls-files --eol | grep 'w/crlf'
+            exit 1
+          fi
+          echo "OK：未发现 CRLF 行尾"
+
+  # ══════════════════════════════════════════════════════════════════════
+  # 作业二：前端（与后端无依赖，完全并行）
+  # ══════════════════════════════════════════════════════════════════════
+  frontend:
+    name: 前端（类型检查 + 构建）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Blog.FrontEnd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          # 内置缓存：按 package-lock.json 的哈希做缓存键
+          cache: npm
+          cache-dependency-path: Blog.FrontEnd/package-lock.json
+
+      # ci 而不是 install：
+      #   - 严格按 lock 文件安装，构建可复现
+      #   - lock 与 package.json 不一致时**直接失败**，而不是悄悄改 lock
+      - name: 安装依赖
+        run: npm ci
+
+      # 下面两条与 docs/07 §4.3 的手工命令完全一致
+      - name: 类型检查
+        run: npx vue-tsc -b --force
+
+      - name: 构建
+        run: npx vite build
+
+  # ══════════════════════════════════════════════════════════════════════
+  # 作业三：后端（编译 + 全部 81 项测试）
+  # ══════════════════════════════════════════════════════════════════════
+  backend:
+    name: 后端（构建 + 测试）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # NuGet 缓存：CI 里 restore 通常是最大的时间开销。
+      # 缓存键用 csproj 的哈希 —— 依赖清单没变就命中缓存，变了自动换新。
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # ── 起数据库 ────────────────────────────────────────────────────
+      #
+      # 为什么用 `docker run` 而不是 `services:` ？
+      #   集成测试需要 **zhparser 扩展**（Posts.SearchVector 是生成列，
+      #   表达式用了 to_tsvector('chinese', ...)），而它不在官方镜像里、必须自行编译。
+      #   而 `services:` 在 steps **之前**就启动了，**来不及先 build 镜像**。
+      #   这是 docs/11 §6.2 讨论的方案 A：不需要镜像仓库，代价是每次现编译。
+      #
+      # 未来若嫌慢，可改成方案 B（预构建推到 ghcr.io），
+      # 但要**确保改 Dockerfile 时会重新推镜像** —— 否则会测到一个过期的数据库环境，
+      # 而且它还是绿的（"假绿"比红更危险）。
+      - name: 构建带 zhparser 的 PostgreSQL 镜像
+        run: docker build -f deploy/postgres-zhparser.Dockerfile -t blog-postgres-zhparser:18 .
+
+      - name: 启动 PostgreSQL 与 Redis
+        run: |
+          # ⚠️ 凭证必须与 Blog.Backend/Blog.WebApi/appsettings.Development.json 一致。
+          #    原因：测试夹具 BlogApiFactory.ResolveDevelopmentConnectionString()
+          #    会**读取该文件**拿主机/端口/用户名/密码，只替换库名。
+          #    也就是说 CI 里的 PG 必须监听 localhost:5432 且用户是 kky。
+          docker run -d --name pgsql \
+            -e POSTGRES_USER=kky \
+            -e POSTGRES_PASSWORD=123456 \
+            -e POSTGRES_DB=blog_stage2 \
+            -p 5432:5432 \
+            blog-postgres-zhparser:18
+
+          # 缓存连接串在 appsettings.Development.json 里是 localhost:6379。
+          # 限流桶也在这里，但测试夹具已把它关掉（RateLimit:Enabled=false）。
+          docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+      - name: 等待 PostgreSQL 就绪
+        run: |
+          # ⚠️「容器启动了」!=「数据库能连了」。
+          #    少了这一步，流水线会**随机失败**，而你会误以为是代码问题。
+          #    随机失败比稳定失败更有害：它训练你"重跑一遍就好了"，
+          #    从而彻底摧毁你对流水线的信任（docs/11 §7.2）。
+          for i in $(seq 1 60); do
+            if docker exec pgsql pg_isready -U kky -d blog_stage2 >/dev/null 2>&1; then
+              echo "PostgreSQL 就绪（等待 $((i * 2)) 秒）"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::PostgreSQL 未在 120 秒内就绪"
+          docker logs pgsql
+          exit 1
+
+      # 先单独验证分词可用，再跑测试。
+      # 这样万一环境有问题，失败信息是"zhparser 不可用"，
+      # 而不是那句著名的、毫无信息量的
+      # "The server has not been started or no web application was configured"。
+      - name: 校验 zhparser 与中文分词配置
+        run: |
+          docker exec pgsql psql -U kky -d blog_stage2 -tAc \
+            "SELECT extname FROM pg_extension WHERE extname='zhparser';" | grep -q zhparser
+          docker exec pgsql psql -U kky -d blog_stage2 -tAc \
+            "SELECT to_tsvector('chinese','使用 EF Core 做数据库优化与全文检索');"
+          echo "OK：zhparser 扩展与 chinese 检索配置可用"
+
+      # ── 编译与测试 ──────────────────────────────────────────────────
+      - name: 还原依赖
+        run: dotnet restore Blog.Backend/Blog.Backend.slnx
+
+      - name: 编译（Release）
+        run: dotnet build Blog.Backend/Blog.Backend.slnx --no-restore --configuration Release
+
+      # 跑全部 81 项（47 集成 + 34 单元）。
+      # 覆盖率**只产出报告、不设阈值**：一开始就卡阈值会逼人写垃圾测试来凑数（docs/11 §9.2）。
+      - name: 跑测试并收集覆盖率
+        run: >
+          dotnet test Blog.Backend/Blog.Tests/Blog.Tests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=results.trx"
+          --collect:"XPlat Code Coverage"
+
+      # 无论成功失败都上传。
+      # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
+      - name: 上传测试报告与覆盖率
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: '**/TestResults/**'
+          if-no-files-found: warn
+
+      # 集成测试失败时，最需要的信息在**数据库容器**里，而不在测试输出里
+      - name: 失败时输出数据库日志
+        if: failure()
+        run: docker logs pgsql
