@@ -206,7 +206,7 @@ jobs:
       - name: 校验测试确实被执行（防假绿）
         run: |
           python3 - <<'PY'
-          import glob, sys
+          import glob, os, sys
           import xml.etree.ElementTree as ET
 
           files = glob.glob('**/TestResults/**/*.trx', recursive=True)
@@ -226,6 +226,19 @@ jobs:
               failed += int(c.get('failed', 0))
 
           print(f'测试总数 {total}：通过 {passed}，失败 {failed}')
+
+          # 写进 GitHub 的「作业摘要」——这样在 Actions 页面**不下载制品**就能看到数字，
+          # 也方便截图留证（简历/面试时"跑了多少测试"是要能被看到的）。
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a', encoding='utf-8') as fh:
+                  fh.write(
+                      '## 后端测试结果\n\n'
+                      '| 指标 | 数量 |\n|---|---:|\n'
+                      f'| 总计 | {total} |\n'
+                      f'| 通过 | {passed} |\n'
+                      f'| 失败 | {failed} |\n'
+                  )
 
           if total == 0:
               print('::error::执行了 0 个测试 —— 这几乎总是"测试没被发现"，属于假绿')
