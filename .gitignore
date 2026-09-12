@@ -32,7 +32,9 @@ Thumbs.db
 # Uploaded media (runtime files)
 Blog.Backend/Blog.WebApi/media/
 
-# Personal task scratchpad (本地待办，刻意不跟踪)
-# 说明：TODO.md 是开发者个人的临时任务清单，内容是阶段性的、随时会被改写，
-# 不适合作为项目文档入库（正式文档在 docs/）。
+# Personal task scratchpad (本地待办与提问，刻意不跟踪)
+# 说明：TODO.md 是开发者个人的临时任务清单，我的问题.md 是阅读文档时随手记的
+# 问题清单。两者的内容都是阶段性的、随时会被改写，不适合作为项目文档入库
+# （正式文档在 docs/，结论应当沉淀进对应文档）。
 TODO.md
+我的问题.md
