@@ -195,6 +195,46 @@ jobs:
           --logger "trx;LogFileName=results.trx"
           --collect:"XPlat Code Coverage"
 
+      # ⚠️ 这一步直接对应 docs/11 §11 的那句判据：
+      #      「一条从来没红过的流水线，你并不知道它是否真的在检查。」
+      #
+      #    `dotnet test` 在**一个测试都没发现**时同样返回退出码 0。
+      #    也就是说：路径写错、过滤器写错、测试工程没被编译进产物……
+      #    这些情况都会让流水线**变绿**，而实际上什么都没验证。
+      #
+      #    这里显式解析 trx 报告，把"测试真的跑了"变成硬性检查。
+      - name: 校验测试确实被执行（防假绿）
+        run: |
+          python3 - <<'PY'
+          import glob, sys
+          import xml.etree.ElementTree as ET
+
+          files = glob.glob('**/TestResults/**/*.trx', recursive=True)
+          if not files:
+              print('::error::没有找到 trx 测试报告，无法确认测试是否执行')
+              sys.exit(1)
+
+          total = passed = failed = 0
+          for f in files:
+              root = ET.parse(f).getroot()
+              ns = {'t': root.tag.split('}')[0].strip('{')}
+              c = root.find('.//t:ResultSummary/t:Counters', ns)
+              if c is None:
+                  continue
+              total  += int(c.get('total', 0))
+              passed += int(c.get('passed', 0))
+              failed += int(c.get('failed', 0))
+
+          print(f'测试总数 {total}：通过 {passed}，失败 {failed}')
+
+          if total == 0:
+              print('::error::执行了 0 个测试 —— 这几乎总是"测试没被发现"，属于假绿')
+              sys.exit(1)
+          if failed:
+              print(f'::error::有 {failed} 个测试失败')
+              sys.exit(1)
+          PY
+
       # 无论成功失败都上传。
       # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
       - name: 上传测试报告与覆盖率
