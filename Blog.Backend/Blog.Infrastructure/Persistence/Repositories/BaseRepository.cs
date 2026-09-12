@@ -67,9 +67,8 @@ namespace Blog.Infrastructure.Persistence.Repositories
         {
             if (expectedVersion < 1)
                 throw new ArgumentOutOfRangeException(nameof(expectedVersion), "版本号必须 >= 1");
-
             var version = _context.Entry(entity).Property(nameof(BaseEntity.Version));
-            version.OriginalValue = expectedVersion;
+            version.OriginalValue = expectedVersion; // 作为 WHERE 条件
             version.CurrentValue = expectedVersion + 1;
         }
     }

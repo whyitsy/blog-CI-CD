@@ -80,8 +80,8 @@ try
             {
                 OnChallenge = async context =>
                 {
-                    context.HandleResponse(); // 阻止默认空响应体
-                    if (context.Response.HasStarted) return;
+                    context.HandleResponse(); // 阻止框架写入 401 空响应体的默认行为
+                    if (context.Response.HasStarted) return;  // 防御性检查, 如果还没有写入响应体才修改Response
 
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     context.Response.ContentType = "application/json; charset=utf-8";
@@ -91,7 +91,7 @@ try
                 },
                 OnForbidden = async context =>
                 {
-                    if (context.Response.HasStarted) return;
+                    if (context.Response.HasStarted) return; // 防御性检查, 如果还没有写入响应体才修改Response
 
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     context.Response.ContentType = "application/json; charset=utf-8";
