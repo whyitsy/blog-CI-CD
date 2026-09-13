@@ -183,11 +183,25 @@ async function onDelete(a: AuthorDto) {
           <span v-else class="avatar-fallback">{{ form.name.slice(0, 1) || '?' }}</span>
         </div>
         <div class="avatar-actions">
-          <label class="btn-ghost">
-            {{ uploading ? '上传中...' : '上传头像' }}
-            <input type="file" accept="image/*" hidden :disabled="uploading" @change="onPickAvatar" />
-          </label>
-          <input v-model.trim="form.avatar" class="input" placeholder="或填写图片 URL" />
+          <div class="avatar-buttons">
+            <label class="btn-ghost">
+              {{ uploading ? '上传中...' : form.avatar ? '更换头像' : '上传头像' }}
+              <input type="file" accept="image/*" hidden :disabled="uploading" @change="onPickAvatar" />
+            </label>
+            <button
+              v-if="form.avatar"
+              type="button"
+              class="btn-ghost"
+              :disabled="uploading"
+              @click="form.avatar = ''"
+            >
+              移除头像
+            </button>
+          </div>
+          <!-- 刻意不提供 URL 输入框：头像地址会被直接放进 <img src>，
+               允许手填就等于允许外部链接（访客 IP 泄露）与 javascript:/data: 之类的注入。
+               服务端 MediaPath 也是白名单校验，两层一致。 -->
+          <span class="hint">头像只能上传设置，支持 jpg / png / webp / gif / svg，单文件不超过 10MB</span>
         </div>
       </div>
 
@@ -336,6 +350,16 @@ async function onDelete(a: AuthorDto) {
   gap: var(--space-2);
   flex: 1;
   min-width: 220px;
+}
+.avatar-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.hint {
+  font: var(--text-caption);
+  color: var(--text-subtle);
 }
 
 .grid {
