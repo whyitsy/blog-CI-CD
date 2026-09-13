@@ -1,0 +1,98 @@
+# ============================================================================
+# Dependabot：自动发现「有漏洞的依赖」和「有新版可升的依赖」
+#
+# 为什么需要它（docs/09 §6 的 G5）：
+#   依赖漏洞是这个项目**唯一一种「代码一行没改，风险却变高了」**的风险。
+#   没有它，你不会有任何渠道知道某个包昨天被披露了 CVE。
+#
+# 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md §9.4
+# ============================================================================
+
+version: 2
+
+updates:
+
+  # ── .NET 依赖 ──────────────────────────────────────────────────────────
+  # nuget 生态会顺着 .slnx 找到全部 5 个工程。
+  - package-ecosystem: "nuget"
+    directory: "/Blog.Backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+    # ⚠️ 这两个包被「按大类」合并成一个 PR，避免每周来一堆单包 PR。
+    #    分组的代价是：一个 PR 里混了多个升级，出问题时要挨个回退。
+    #    对个人项目这个取舍是划算的。
+    groups:
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      test:
+        patterns:
+          - "xunit*"
+          - "Moq"
+          - "coverlet*"
+
+    ignore:
+      # ⚠️⚠️ 这一段是本文件最需要注意的地方，改动前请先读 docs/14 第 8 条。
+      #
+      # `SixLabors.ImageSharp` 刻意锁在 3.x（Blog.Infrastructure.csproj）：
+      # v4 起需要构建期许可密钥，本项目用不了（docs/02 §5.1）。
+      # 所以屏蔽 4.x 的**版本升级** PR，否则每周都会收到一个不能合并的 PR。
+      #
+      # 为什么必须写 `update-types` 而不能只写 `dependency-name`：
+      #   只写 dependency-name 的规则会被展开成 `>= 0`，
+      #   并且**同时作用于安全更新通道** —— 结果是这个包的安全修复 PR 也被静默关掉，
+      #   而且**没有任何显式报错**（只会表现在「Dependabot 变安静了」）。
+      #   加上 update-types 后，规则被限定在版本更新通道，
+      #   日志里会标注 `doesn't apply to security update`。
+      #
+      # 怎么验证它真的生效（重要，因为「安静」和「没生效」看起来一样）：
+      #   Insights → Dependency graph → Dependabot → Recent update jobs → view logs
+      #   期望看到：
+      #     version-update:semver-major - from dependabot.yml (doesn't apply to security update)
+      #   如果看到的是 `>= 0 - from dependabot.yml` / `all_versions_ignored`，说明写错了。
+      - dependency-name: "SixLabors.ImageSharp"
+        update-types:
+          - "version-update:semver-major"
+
+  # ── 前端依赖 ───────────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/Blog.FrontEnd"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+    # ⚠️ 前端用 npmmirror 装包（见 docs/11 §9.4），但 Dependabot 走自己的通道，
+    #    不受本机 .npmrc 影响 —— 所以它在这里是可靠的，
+    #    而 `npm audit` 不是（镜像源没实现 audit 接口）。这个区别很重要。
+
+    groups:
+      # 编译器/构建工具链一起升级：它们之间有强耦合，
+      # 分开升会出现「升了 vite 没升插件 → 构建挂掉」这种夹在中间的坏状态。
+      build:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vue-tsc"
+          - "typescript"
+          - "rolldown"
+          - "@rolldown/*"
+      vue:
+        patterns:
+          - "vue"
+          - "vue-router"
+          - "pinia"
+          - "@vue/*"
+
+  # ── GitHub Actions 自身 ────────────────────────────────────────────────
+  # 流水线里用的 actions/checkout@v4 这类也是依赖，也会有安全公告。
+  # 这一条最容易被忘掉，但它零成本。
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5

@@ -5,12 +5,14 @@
 #   开发环境是 **Windows 编译 + WSL 发命令**，而部署目标是 **Linux + Nginx**。
 #   这个落差只会在部署当天暴露 —— 除非有一台干净的 Linux 机器每次都替你走一遍。
 #
-# 三个作业互不依赖，**并行**运行：
+# 四个作业互不依赖，**并行**运行：
 #   hygiene   行尾检查（最快，秒级失败）
 #   frontend  类型检查 + 构建
-#   backend   编译 + 195 项测试（含 79 项需要真实 PostgreSQL 的集成测试）
+#   backend   编译 + 195 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
+#   security  依赖漏洞扫描（NuGet + npm，**只报告不阻断**）
 #
 # 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md
+# 覆盖率为什么必须排除迁移代码：Blog.Backend/coverage.runsettings 的注释
 # ============================================================================
 
 name: CI
@@ -186,14 +188,24 @@ jobs:
         run: dotnet build Blog.Backend/Blog.Backend.slnx --no-restore --configuration Release
 
       # 跑全部 195 项（79 集成 + 116 单元）。
+      #
       # 覆盖率**只产出报告、不设阈值**：一开始就卡阈值会逼人写垃圾测试来凑数（docs/11 §9.2）。
+      #
+      # ⚠️ 用 --settings 而不是 --collect：
+      #    排除规则（EF 迁移、源生成代码）写在 coverage.runsettings 里，
+      #    而排除**只能**通过 runsettings 传。不排除的话数字是没有意义的 ——
+      #    实测未排除时 Blog.Infrastructure 显示 91.8%，其中 73% 的行数是 EF 生成的迁移。
+      #    两者同时给会重复挂载收集器，所以这里只留 --settings。
+      #
+      #    ⚠️ 代价：覆盖率从此依赖这个文件。它被删掉时 dotnet test 会**照常变绿**，
+      #    所以下一步有一道显式检查兜住这个静默失效。
       - name: 跑测试并收集覆盖率
         run: >
           dotnet test Blog.Backend/Blog.Tests/Blog.Tests.csproj
           --no-build
           --configuration Release
           --logger "trx;LogFileName=results.trx"
-          --collect:"XPlat Code Coverage"
+          --settings Blog.Backend/coverage.runsettings
 
       # ⚠️ 这一步直接对应 docs/11 §11 的那句判据：
       #      「一条从来没红过的流水线，你并不知道它是否真的在检查。」
@@ -248,6 +260,46 @@ jobs:
               sys.exit(1)
           PY
 
+      # 覆盖率不阻断，但**必须看得见**（docs/11 §9.2：
+      # 「把覆盖率报告作为 CI 制品上传 —— 看得见才会被关注」）。
+      # 制品要下载才看得到，写进作业摘要则是打开 PR 就在眼前。
+      #
+      # ⚠️ 这一步同时兼作**防静默失效**：上一步改用 --settings 之后，
+      #    runsettings 被删 / 参数被改都会让覆盖率**无声消失**，
+      #    而流水线依然全绿。找不到报告时这里必须报错。
+      - name: 覆盖率写进作业摘要（并确认报告真的产出了）
+        run: |
+          python3 - <<'PY'
+          import glob, os, sys
+          import xml.etree.ElementTree as ET
+
+          files = glob.glob('**/TestResults/**/coverage.cobertura.xml', recursive=True)
+          if not files:
+              print('::error::没有产出 coverage.cobertura.xml —— 覆盖率收集没有生效。')
+              print('::error::最常见的原因：--settings Blog.Backend/coverage.runsettings 丢失，')
+              print('::error::或该文件被删除/改名。流水线不会因此变红，所以在这里显式兜住。')
+              sys.exit(1)
+
+          root = ET.parse(files[0]).getroot()
+          line_rate = float(root.get('line-rate', 0)) * 100
+          branch_rate = float(root.get('branch-rate', 0)) * 100
+          covered = root.get('lines-covered')
+          valid = root.get('lines-valid')
+          print(f'行覆盖 {line_rate:.1f}%（{covered}/{valid}）  分支覆盖 {branch_rate:.1f}%')
+
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a', encoding='utf-8') as fh:
+                  fh.write(
+                      '## 覆盖率（仅供观察，不设阈值）\n\n'
+                      '| 指标 | 数值 |\n|---|---:|\n'
+                      f'| 行覆盖 | {line_rate:.1f}% ({covered}/{valid}) |\n'
+                      f'| 分支覆盖 | {branch_rate:.1f}% |\n\n'
+                      '> 已排除 EF 迁移与源生成代码（`coverage.runsettings`）。\n'
+                      '> **不对总量设阈值**——阈值只会逼人写不 assert 的测试来凑数（docs/11 §9.2）。\n'
+                  )
+          PY
+
       # 无论成功失败都上传。
       # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
       - name: 上传测试报告与覆盖率
@@ -262,3 +314,116 @@ jobs:
       - name: 失败时输出数据库日志
         if: failure()
         run: docker logs pgsql
+
+  # ══════════════════════════════════════════════════════════════════════
+  # 作业四：依赖安全扫描（对应 docs/09 §6 的 G5）
+  #
+  # 为什么单独开一个作业，而不是塞进上面两个里：
+  #   ① 它回答的是**另一个问题**。上面两个问"我写的代码对不对"，
+  #      这个问"我依赖的代码还安全吗" —— 后者会在一行代码都没改的情况下变坏；
+  #   ② 独立作业 = 独立的检查名，将来想把它设成 Required 时，
+  #      不需要改动其它两个作业的配置。
+  #
+  # 为什么现在**只报告不阻断**（continue-on-error）：
+  #   刚引入扫描时先只看结果。等它的结果稳定、你也确认过
+  #   "它报出来的东西我确实每次都会修"，再改成阻断。
+  #   反过来做（先阻断）最常见的结局是：某天被一个修不了的 CVE 卡住，
+  #   于是把整个作业注释掉 —— 从此它就是个摆设。
+  #
+  # ⚠️ 一个容易被忽略的事实（实测于 2026-09-13）：
+  #   **这个项目其实早就在扫依赖漏洞了。** NuGet Audit 从 .NET 8 SDK 起默认开启，
+  #   `dotnet restore` / `dotnet build` 会打出 NU1903 警告。CI 每次都在打这个警告 ——
+  #   只是它是**警告**：不会让流水线变红，也不会有任何人看见。
+  #   所以 G5 的准确描述不是"完全没做"，而是"信息一直在输出，却没有任何机制让它被看见"。
+  #   将来要把它升级成阻断，最省事的路径是给构建加
+  #   `-warnaserror:NU1901;NU1902;NU1903;NU1904`（而不是再加一个作业）。
+  # ══════════════════════════════════════════════════════════════════════
+  security:
+    name: 依赖安全扫描
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # dotnet list package 需要先有还原结果（obj/project.assets.json），
+      # 否则它拿不到依赖树。所以这里不能省掉 restore。
+      - name: 还原依赖
+        run: dotnet restore Blog.Backend/Blog.Backend.slnx
+
+      # --include-transitive 才是重点：漏洞通常藏在**传递依赖**里，
+      # 只扫直接依赖会漏掉大部分情况（docs/11 §9.4）。
+      #
+      # 输出同时写进文件，后面那一步要把它搬进作业摘要 ——
+      # 一个"只在日志深处"的检查等于没有。
+      - name: NuGet 漏洞扫描（含传递依赖）
+        continue-on-error: true
+        run: |
+          # ⚠️ 这个命令在**发现漏洞时退出码依然是 0**（实测阳性对照：
+          #    故意引用 Newtonsoft.Json 12.0.1，报出 High 漏洞，退出码 0）。
+          #    所以退出码只能用来判断"命令有没有跑起来"，**不能**用来判断"有没有漏洞"。
+          set -o pipefail
+          if ! dotnet list Blog.Backend/Blog.Backend.slnx package \
+                 --vulnerable --include-transitive 2>&1 | tee "$RUNNER_TEMP/nuget-vuln.txt"; then
+            echo "::error::NuGet 漏洞扫描命令本身失败了（还原未完成？网络不通？）"
+            echo "::error::⚠️ 不要把这种情况当成「没有漏洞」—— 这是一次「不知道」（见 docs/14 第 8 条）"
+            exit 1
+          fi
+
+          # 无论"扫出漏洞"还是"干净"，正常输出里都会出现 vulnerable / 易受攻击 字样
+          # （前者："has the following vulnerable packages"，后者："has no vulnerable packages"）。
+          # 两样都没有 → 说明命令没真正执行，而不是"没有漏洞"。
+          if ! grep -qiE 'vulnerab|易受攻击' "$RUNNER_TEMP/nuget-vuln.txt"; then
+            echo "::error::扫描输出里没有出现漏洞相关的任何字样，无法确认扫描真的执行了"
+            exit 1
+          fi
+
+      - name: npm 漏洞扫描
+        continue-on-error: true
+        run: |
+          # ⚠️⚠️ 必须显式写 --registry。原因是一个真实的坑（docs/14 第 8 条）：
+          #
+          #   本机的默认源是 registry.npmmirror.com（淘宝镜像），
+          #   而它**没有实现 audit 接口**，请求会直接返回
+          #      404 [NOT_IMPLEMENTED] /-/npm/v1/security/* not implemented yet
+          #
+          #   而且 npm 这时是**非 0 退出**的。由于本作业是 continue-on-error，
+          #   这一步会「绿着失败」—— 在页面上和「扫了，没发现漏洞」长得一模一样。
+          #
+          #   同理，**换掉本机默认源不能算解决** —— CI 是干净的机器，
+          #   正确做法是每次显式指定，让"用哪个源审计"这件事写在流水线里。
+          cd Blog.FrontEnd
+          npm audit --registry=https://registry.npmjs.org 2>&1 | tee "$RUNNER_TEMP/npm-audit.txt" || true
+
+          # npm audit 正常时一定打印 "found N vulnerabilities"（N 可以是 0）。
+          # 没有这行 → 审计没执行，而不是"没有漏洞"。
+          if ! grep -qiE 'vulnerabilit' "$RUNNER_TEMP/npm-audit.txt"; then
+            echo "::error::npm audit 没有产出可识别的结论 —— 扫描很可能根本没执行（见 docs/14 第 8 条）"
+            echo "::error::⚠️ 不要把它当成「没有漏洞」"
+            exit 1
+          fi
+
+      # 无论扫描成功失败都写摘要（失败的那次恰恰最需要看）。
+      - name: 把扫描结果写进作业摘要
+        if: always()
+        run: |
+          {
+            echo '## 依赖安全扫描（只报告，不阻断）'
+            echo
+            echo '发现高危漏洞时**这里会列出**，但不会卡住合并 —— 先观察一段时间再决定是否设成门禁。'
+            echo
+            echo '### NuGet（含传递依赖）'
+            echo '```'
+            cat "$RUNNER_TEMP/nuget-vuln.txt" 2>/dev/null || echo '(没有产出，可能是扫描步骤本身失败了)'
+            echo '```'
+            echo '### npm'
+            echo '```'
+            cat "$RUNNER_TEMP/npm-audit.txt" 2>/dev/null || echo '(没有产出，可能是扫描步骤本身失败了)'
+            echo '```'
+            echo '> ⚠️ `SixLabors.ImageSharp` 刻意锁在 3.x（v4 起需构建期许可密钥）。'
+            echo '> 因此这条扫描的结论里如果出现它，要看清楚"修复版本"是不是 4.x —— 是的话不能升，需要单独决策。'
+          } >> "$GITHUB_STEP_SUMMARY"
+

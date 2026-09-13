@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  覆盖率收集配置
+  ============================================================================
+
+  为什么需要这个文件（docs/09 §6 的 G7）：
+
+  `coverlet.collector` 默认会把**所有**被加载的程序集都统计进去，
+  包括 **EF Core 生成的迁移代码**和**源生成器生成的代码**。
+
+  实测（2026-09-13，未排除时的原始报告）：
+
+      总体：行 81.8% / 分支 40.4%
+      Blog.Infrastructure 91.8%   ← 虚假的
+
+  排除之后的真实基线（2026-09-14 连跑三次一致）：
+
+      总体：行 70.2% / 分支 49.8%      统计行数 2027 / 2889
+      Blog.Infrastructure 75.8%
+
+  ⚠️ 注意方向：行覆盖率**降了 11.6 个百分点**，分支覆盖率反而**升了 9.4 个百分点**。
+     代码一行没改，质量一点没变 —— 变的只是统计口径。
+     这就是「覆盖率可以被轻易刷高」最直白的实证。
+
+  这个 91.8% 里，73% 的行数来自五个生成文件：
+
+      AddAuthCollectionsAndFts  740 行
+      ExtendPostSummaryLength   615 行
+      InitCreate                591 行
+      FixSeedAuthorAvatar       602 行
+      BlogDbContextModelSnapshot 595 行
+
+  迁移代码「被执行过」（集成测试一跑就必然会执行它们），
+  但它**一行都不代表被测过** —— 它只会把整体数字往上抬，
+  让「哪部分业务代码是裸奔的」这个真正该看的问题被淹没。
+
+  所以本文件的作用是：**先让数字变得有意义**，然后再谈阈值。
+  这也是 docs/11 §9.2 「行业没有『必须 80%』」那一节的实证。
+
+  用法：跑测试时用 settings 参数把本文件传给 dotnet test（完整命令见 docs/07 §4.2）。
+  支持它的最小 dotnet 版本、需要的收集器包（coverlet.collector），都在那里。
+
+  ⚠️ 踩过的坑：XML 注释里**不能出现连续两个减号**（出现就会报
+     「提供的设置文件不符合格式要求。An XML comment cannot contain 连续减号」）。
+     所以上面那句命令行才被写成文字描述 —— 写全了反而会让文件加载不了。
+  ============================================================================
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+
+          <!--
+            ⚠️ 逗号分隔的单个元素，不要拆成多个 <ExcludeByFile> 元素
+               （拆分会导致只有最后一个生效）。
+
+            排除项分两类，理由不同：
+
+            1) EF Core 迁移与模型快照 —— 机器生成的，无法「测试其行为」
+               **注意**：排除的是「覆盖率的统计口径」，不是「不跑迁移」。
+               集成测试仍然会执行全部迁移（那是 G12 的回归防护），
+               只是它们不再计入覆盖率分母。
+
+            2) obj/ 下的源生成器产物 —— 例如 OpenAPI 的 XML 注释支持代码，
+               实测占 187 行且覆盖率恒为 0%。它同样是编译器生成的。
+          -->
+          <ExcludeByFile>
+            **/Persistence/Migrations/*.cs,
+            **/*ModelSnapshot.cs,
+            **/obj/**/*.cs
+          </ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
