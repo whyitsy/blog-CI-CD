@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Blog.Tests.Infrastructure;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Blog.Tests.Integration;
 
@@ -64,14 +66,55 @@ public sealed class MediaUrlValidationTests
         var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>";
 
         var bad = await UploadAsync(token, "evil.svg", "image/svg+xml", Encoding.UTF8.GetBytes(svg));
+        // 状态码必须是 4xx：以前这里是 HTTP 200、只有 body 里 code=4001
+        Assert.Equal(HttpStatusCode.BadRequest, bad.Status);
         Assert.Equal(Codes.InvalidArgument, bad.Code);
         Assert.Contains("不支持的文件类型", bad.Message);
         Assert.Null(bad.Url);
 
         // 正向：普通位图仍然放行
         var ok = await UploadAsync(token, "probe.png", "image/png", [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        Assert.Equal(HttpStatusCode.OK, ok.Status);
         Assert.Equal(Codes.Ok, ok.Code);
         Assert.False(string.IsNullOrWhiteSpace(ok.Url));
+    }
+
+    /// <summary>
+    /// 上传接口的错误必须用 **HTTP 状态码**表达，不能返回「200 + 错误 code」。
+    ///
+    /// <para>改造前 <c>FilesController.Upload</c> 是 <c>return ApiResponse.Fail(...)</c>，
+    /// 于是「参数不合法」这个语义在上传接口上是 200、在其它接口上是 400，
+    /// 客户端必须记得"上传只看 code 不看状态码" —— 这正是要消除的不一致。</para>
+    /// </summary>
+    [Fact]
+    public async Task 上传_空文件返回400而不是200()
+    {
+        var token = await AdminAsync();
+
+        var r = await UploadAsync(token, "empty.png", "image/png", []);
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.Status);
+        Assert.Equal(Codes.InvalidArgument, r.Code);
+        Assert.Contains("不能为空", r.Message);
+    }
+
+    /// <summary>超过业务上限（<c>FileStorage:MaxFileSize</c>）应当返回 <b>413</b>，而不是 200 或 500</summary>
+    [Fact]
+    public async Task 上传_超过业务上限返回413()
+    {
+        var token = await AdminAsync();
+
+        // 从配置读上限，而不是把 10MB 硬编码进测试 —— 改了配置测试仍然对
+        var max = _fixture.Factory.Services
+            .GetRequiredService<IConfiguration>()
+            .GetValue<long>("FileStorage:MaxFileSize");
+        Assert.True(max > 0, "测试前置：FileStorage:MaxFileSize 应当是正数");
+
+        var r = await UploadAsync(token, "too-big.png", "image/png", new byte[max + 1]);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, r.Status);
+        Assert.Equal(Codes.PayloadTooLarge, r.Code);
+        Assert.Contains("文件大小超过限制", r.Message);
     }
 
     /// <summary>multipart 上传（<see cref="ApiClient"/> 只封装 JSON，这里单独构造请求）</summary>

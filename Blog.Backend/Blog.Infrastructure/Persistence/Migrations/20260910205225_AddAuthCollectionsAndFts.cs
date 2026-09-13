@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using NpgsqlTypes;
 
@@ -12,6 +12,39 @@ namespace Blog.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // ══════════════════════════════════════════════════════════════════════
+            // ⚠️ 这两段 SQL **必须排在最前面**，不能挪到下面去（G12，2026-09-13 修复）。
+            //
+            // 原因：本迁移下面会 `AddColumn<SearchVector>`，而它是一个**生成列**，
+            // 表达式里引用了 `to_tsvector('chinese', …)` —— 也就是说它**依赖
+            // `chinese` 这个检索配置已经存在**。
+            //
+            // 原来的顺序是「先 AddColumn<SearchVector>，再在这里建配置」，
+            // 于是整条迁移链**无法在一个干净的 PostgreSQL 上从零建库**：
+            //
+            //     42704: text search configuration "chinese" does not exist
+            //
+            // 它之所以一直没暴露，是因为 PG 镜像的 entrypoint 脚本
+            // （deploy/postgres-init/01-zhparser.sql）会在数据目录为空时**先**把
+            // 扩展与配置建好 —— 靠的是部署巧合，而不是这条迁移自己能站得住。
+            // 换标准 postgres 镜像 / 还原 schema-only dump / 手工建库后跑迁移，都会失败，
+            // 且失败发生在应用启动时的 Database.Migrate()，表现为「应用起不来」。
+            //
+            // 两段 SQL 都是幂等的（IF NOT EXISTS / 条件判断），重复执行安全。
+            // 已应用过本迁移的库会被 EF 按 ID 直接跳过，因此调整顺序对它们没有任何影响。
+            // ══════════════════════════════════════════════════════════════════════
+            migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS zhparser;");
+
+            migrationBuilder.Sql(@"
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'chinese') THEN
+        CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
+        ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l,j,q WITH simple;
+    END IF;
+END
+$$;");
+
             migrationBuilder.AlterColumn<Guid>(
                 name: "AuthorId",
                 table: "Posts",
@@ -160,22 +193,8 @@ namespace Blog.Infrastructure.Persistence.Migrations
                 principalColumn: "Id",
                 onDelete: ReferentialAction.SetNull);
 
-            // ---------------------------------------------------------------- 中文全文检索（T9）
-            // 依赖 zhparser 扩展与 chinese 检索配置，二者由自定义 PostgreSQL 镜像提供
-            // （见 deploy/postgres-zhparser.Dockerfile）。用 IF NOT EXISTS 保证可重复执行。
-            migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS zhparser;");
-
-            migrationBuilder.Sql(@"
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'chinese') THEN
-        CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
-        ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l,j,q WITH simple;
-    END IF;
-END
-$$;");
-
             // GIN 索引：tsvector 只在有索引时才能高效检索（倒排索引）
+            // 注意：`chinese` 检索配置在 **本方法最前面** 就已经建好了（见那里的说明，G12）。
             migrationBuilder.Sql(@"CREATE INDEX ix_posts_search ON ""Posts"" USING gin (""SearchVector"");");
         }
 

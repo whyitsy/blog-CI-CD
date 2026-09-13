@@ -43,7 +43,7 @@ public sealed class BlogApiFactory : WebApplicationFactory<Program>
         _adminConnectionString = builder.ConnectionString;
 
         CreateTestDatabase();
-        InitializeChineseTextSearch();
+        // 刻意不做任何「预建 chinese 配置」的准备 —— 见下面那段注释（G12 的回归防护）
         MigrateTestDatabase();
     }
 
@@ -93,37 +93,21 @@ public sealed class BlogApiFactory : WebApplicationFactory<Program>
         db.Database.Migrate();
     }
 
-    /// <summary>
-    /// 在测试库里准备中文全文检索的扩展与检索配置。
-    ///
-    /// 为什么必须显式做这一步：全新创建的数据库是「干净」的，
-    /// 而 Posts.SearchVector 是**生成列**，表达式里用了 <c>to_tsvector('chinese', ...)</c>。
-    /// 没有 chinese 检索配置时，迁移直接失败：
-    ///   42704: text search configuration "chinese" does not exist
-    /// （实测就是这个报错，而且被 WebApplicationFactory 包装成了看不出原因的错误。）
-    ///
-    /// 这里执行的语句与 EF 迁移/deploy 初始化脚本保持一致：
-    /// 扩展已随自定义镜像提供，检索配置需要按库创建一次。
-    /// </summary>
-    private void InitializeChineseTextSearch()
-    {
-        using var conn = new NpgsqlConnection(BuildTestConnectionString());
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            CREATE EXTENSION IF NOT EXISTS zhparser;
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'chinese') THEN
-                    CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
-                    ALTER TEXT SEARCH CONFIGURATION chinese
-                        ADD MAPPING FOR n,v,a,i,e,l,j,q WITH simple;
-                END IF;
-            END
-            $$;
-            """;
-        cmd.ExecuteNonQuery();
-    }
+    // ────────────────────────────────────────────────────────────────────────
+    // ⚠️ 这里**刻意没有**「预先创建 chinese 检索配置」这一步（2026-09-13 移除）。
+    //
+    // 历史上确实需要它：Posts.SearchVector 是**生成列**，表达式用了
+    // to_tsvector('chinese', ...)，而迁移链把 AddColumn<SearchVector> 排在了
+    // 创建该配置的 SQL **之前**，于是「干净」的库跑迁移必定失败：
+    //     42704: text search configuration "chinese" does not exist
+    // 当时的应对是在夹具里先把配置建好绕过去 —— 但那等于**把缺陷掩盖在测试里**：
+    // 「迁移链能不能从零建库」恰恰是 CI 最该验证的事情之一（缺口 G12）。
+    //
+    // 现在迁移自己会建扩展与配置（见 20260910205225_AddAuthCollectionsAndFts
+    // 最前面的说明），因此这里不再需要任何前置准备 ——
+    // **集成测试是在一个完全干净的库上跑迁移的，这本身就是 G12 的回归防护**。
+    // 谁再把这个顺序调回去，这里会立刻红，而不是等到换镜像、上生产时才炸。
+    // ────────────────────────────────────────────────────────────────────────
 
     private void CreateTestDatabase()
     {

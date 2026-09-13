@@ -1,4 +1,5 @@
 using Blog.Application.Common;
+using Blog.Application.Common.Exceptions;
 using Blog.Application.Interfaces;
 using Blog.Infrastructure.Files;
 using Microsoft.AspNetCore.Authorization;
@@ -30,6 +31,13 @@ namespace Blog.WebApi.Controllers
         /// **需要 ContentWriter**（Admin 或 Author）：上传是写操作，
         /// 匿名开放会让任何人都能往服务器塞文件（耗尽磁盘）。
         /// 读取（下面的 GET）保持公开——文章封面/头像必须能被匿名访客看到。
+        ///
+        /// <para><b>错误一律走异常，不在这里 return 错误响应体。</b></para>
+        /// 直接 <c>return ApiResponse.Fail(...)</c> 会得到一个 **HTTP 200** 的响应，
+        /// 只有 body 里的 <c>code</c> 是错误码 —— 于是「参数不合法」这一个语义，
+        /// 在上传接口上是 200、在其它接口上是 400，客户端必须记得"上传只看 code"。
+        /// 抛 <see cref="BusinessException"/> 则由全局中间件统一映射为
+        /// 400 / 413 + 统一响应体，与其它接口完全一致。
         /// </summary>
         [HttpPost("upload")]
         [Authorize(Policy = "ContentWriter")]
@@ -37,28 +45,34 @@ namespace Blog.WebApi.Controllers
         public async Task<ApiResponse<object>> Upload(IFormFile file, CancellationToken cancellationToken)
         {
             if (file is null || file.Length == 0)
-                return ApiResponse<object>.Fail(ErrorCodes.InvalidArgument, "文件不能为空");
+                throw new BusinessException("文件不能为空", ErrorCodes.InvalidArgument);
 
             if (file.Length > _options.MaxFileSize)
-                return ApiResponse<object>.Fail(ErrorCodes.InvalidArgument,
-                    $"文件大小超过限制（{(_options.MaxFileSize / 1024 / 1024)}MB）");
+                throw new BusinessException(
+                    $"文件大小超过限制（{_options.MaxFileSize / 1024 / 1024}MB）",
+                    // 413 才是"请求体过大"的标准状态码；4130 这个业务码此前定义了却从没被用过
+                    ErrorCodes.PayloadTooLarge);
 
+            StoredFile stored;
             try
             {
                 await using var stream = file.OpenReadStream();
-                var stored = await _storage.SaveAsync(stream, file.FileName, file.ContentType, cancellationToken);
-                return ApiResponse<object>.Ok(new
-                {
-                    url = stored.Url,
-                    storedBytes = stored.StoredBytes,
-                    originalBytes = stored.OriginalBytes,
-                    converted = stored.Converted,
-                });
+                stored = await _storage.SaveAsync(stream, file.FileName, file.ContentType, cancellationToken);
             }
             catch (ArgumentException ex)
             {
-                return ApiResponse<object>.Fail(ErrorCodes.InvalidArgument, ex.Message);
+                // 存储层用 ArgumentException 表达「这个文件我不收」（扩展名不在白名单等）。
+                // 转成业务异常，交给全局中间件统一处理。
+                throw new BusinessException(ex.Message, ErrorCodes.InvalidArgument);
             }
+
+            return ApiResponse<object>.Ok(new
+            {
+                url = stored.Url,
+                storedBytes = stored.StoredBytes,
+                originalBytes = stored.OriginalBytes,
+                converted = stored.Converted,
+            });
         }
 
         /// <summary>读取文件（如 /api/files/2026/09/xxx.png），命中时下发长缓存</summary>
