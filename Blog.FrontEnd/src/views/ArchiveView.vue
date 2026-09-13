@@ -11,6 +11,11 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     groups.value = await getArchives()
+  } catch (e) {
+    // 加载失败按「空归档」呈现 —— 理由与写法同 TagsView（那里有完整说明）：
+    // 只写 try/finally 会让 rejection 无人接收，冒出 Uncaught (in promise)。
+    groups.value = []
+    console.error('[archives] 加载归档失败：', e)
   } finally {
     loading.value = false
   }

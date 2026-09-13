@@ -12,6 +12,11 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     tags.value = await getCategories()
+  } catch (e) {
+    // 加载失败按「空列表」呈现 —— 理由与写法同 TagsView（那里有完整说明）：
+    // 只写 try/finally 会让 rejection 无人接收，冒出 Uncaught (in promise)。
+    tags.value = []
+    console.error('[categories] 加载分类列表失败：', e)
   } finally {
     loading.value = false
   }

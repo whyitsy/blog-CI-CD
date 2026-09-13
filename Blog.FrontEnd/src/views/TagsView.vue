@@ -12,6 +12,17 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     tags.value = await getTags()
+  } catch (e) {
+    // 加载失败按「空列表」呈现，与专栏/分类/归档等公开页保持一致：
+    // 技术细节只进控制台，页面不暴露 HTTP 状态码，也不弹错误横幅。
+    //
+    // ⚠️ 这个 catch 不是可有可无的：只写 try/finally 的话 UI 看起来完全正常
+    //    （loading 置回 false、列表仍为空 → 显示「暂无标签」），
+    //    但 Promise 的 rejection **没有人接**，控制台会冒出 Uncaught (in promise)。
+    //    将来一旦接入全局的 unhandledrejection 上报，它就会变成一条假告警。
+    //    （这个不一致由 tools/e2e 的 07-public-lists-failure 发现并守护）
+    tags.value = []
+    console.error('[tags] 加载标签列表失败：', e)
   } finally {
     loading.value = false
   }
