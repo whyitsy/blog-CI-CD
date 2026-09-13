@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { getMyAuthor, updateAuthor } from '@/api/authors'
 import { uploadFile } from '@/api/files'
+import { ACCEPT_IMAGE } from '@/utils/media'
 import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
 import type { AuthorDto } from '@/types'
@@ -144,7 +145,7 @@ function onReset() {
           <div class="avatar-buttons">
             <label class="btn-ghost">
               {{ uploading ? '上传中...' : form.avatar ? '更换头像' : '上传头像' }}
-              <input type="file" accept="image/*" hidden :disabled="uploading" @change="onPickAvatar" />
+              <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploading" @change="onPickAvatar" />
             </label>
             <button
               v-if="form.avatar"
@@ -157,7 +158,7 @@ function onReset() {
             </button>
           </div>
           <!-- 同管理端：不提供 URL 输入框，头像只能上传（服务端 MediaPath 白名单是第二道闸） -->
-          <span class="hint">头像只能上传设置，支持 jpg / png / webp / gif / svg，单文件不超过 10MB</span>
+          <span class="hint">头像只能上传设置，支持 jpg / png / webp / gif，单文件不超过 10MB</span>
         </div>
       </div>
 

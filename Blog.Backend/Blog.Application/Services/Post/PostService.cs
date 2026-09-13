@@ -1,4 +1,4 @@
-using Blog.Application.Common;
+﻿using Blog.Application.Common;
 using Blog.Application.Common.Exceptions;
 using Blog.Application.Interfaces;
 using Blog.Domain.Entities;
@@ -128,7 +128,7 @@ namespace Blog.Application.Services.Post
 
         public async Task<PostDetailDto> CreateAsync(CreatePostRequest request, CancellationToken cancellationToken = default)
         {
-            ValidateTitleAndContent(request.Title, request.Content);
+            ValidateInput(request.Title, request.Content, request.Summary);
 
             // 未登录不允许创建（无认证时角色为 null）
             if (!_currentUser.IsAuthenticated)
@@ -165,7 +165,7 @@ namespace Blog.Application.Services.Post
 
         public async Task<PostDetailDto> UpdateAsync(Guid id, UpdatePostRequest request, CancellationToken cancellationToken = default)
         {
-            ValidateTitleAndContent(request.Title, request.Content);
+            ValidateInput(request.Title, request.Content, request.Summary);
 
             var post = await _posts.GetByIdAsync(id, cancellationToken)
                 ?? throw new BusinessException("文章不存在", ErrorCodes.NotFound);
@@ -365,14 +365,24 @@ namespace Blog.Application.Services.Post
             return query with { Page = page, PageSize = pageSize, Keyword = keyword };
         }
 
-        private static void ValidateTitleAndContent(string title, string content)
+        /// <summary>
+        /// 写文章时的入参校验。
+        ///
+        /// <para>⚠️ <b>摘要长度以前漏在这里</b>（见 docs/14 第 5 条）：
+        /// 数据库有 <c>varchar(120)</c> 约束，但应用层不校验、前端也没有 <c>maxlength</c>，
+        /// 于是超长时一路穿到数据库，抛 <c>DbUpdateException</c>，
+        /// 用户看到的是「服务器内部错误」而不是「摘要太长了」。</para>
+        /// </summary>
+        private static void ValidateInput(string title, string content, string? summary)
         {
             if (string.IsNullOrWhiteSpace(title))
                 throw new BusinessException("标题不能为空", ErrorCodes.InvalidArgument);
-            if (title.Length > 200)
-                throw new BusinessException("标题长度不能超过 200", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(title, FieldLimits.PostTitle, "标题");
+
             if (string.IsNullOrWhiteSpace(content))
                 throw new BusinessException("内容不能为空", ErrorCodes.InvalidArgument);
+
+            FieldLimits.EnsureLength(summary, FieldLimits.PostSummary, "摘要");
         }
     }
 }

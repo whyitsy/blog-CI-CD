@@ -11,12 +11,36 @@ namespace Blog.Infrastructure.Files
     /// </summary>
     public class LocalFileStorageService : IFileStorageService
     {
+        /// <summary>
+        /// 允许上传的扩展名白名单。
+        ///
+        /// <para>⚠️ <b>不要把 .svg 加回来。</b></para>
+        /// SVG 是可以内嵌 <c>&lt;script&gt;</c> 的格式，而本服务的文件读取接口用
+        /// <c>File(stream, contentType)</c> **同源**下发。拥有 ContentWriter 的账号
+        /// （作者即可）上传一个恶意 SVG，再把 <c>/api/files/xxx.svg</c> 的地址发给管理员，
+        /// 管理员**直接打开这个链接**时脚本就在站点源上执行 —— 存储型 XSS。
+        ///
+        /// <para>（注意区分：<c>&lt;img src="x.svg"&gt;</c> 里的 SVG 是「被动图像」，
+        /// 脚本不会执行；真正的风险是**把 SVG 当作顶层文档导航过去**。）</para>
+        ///
+        /// 该缺口曾登记为 G11（见 docs/09-已知限制与技术债.md），2026-09-13 通过
+        /// 「直接不支持上传 SVG」关闭。将来若确实需要矢量图，
+        /// 正确做法是**先转成位图再入库**，而不是把 SVG 原样存下来。
+        /// </summary>
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
             ".mp4", ".webm", ".pdf", ".zip"
         };
 
+        /// <summary>
+        /// 扩展名 → Content-Type。
+        ///
+        /// <para>⚠️ 这里**刻意没有 .svg**（与 <see cref="AllowedExtensions"/> 保持一致）。
+        /// 上传入口已经拒绝 SVG，这一层是兜底：万一有人手工把 svg 放进媒体目录，
+        /// 它只会被当作 <c>application/octet-stream</c> 下载，而不会以
+        /// <c>image/svg+xml</c> 内联渲染成文档。</para>
+        /// </summary>
         private static readonly Dictionary<string, string> ContentTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             [".png"] = "image/png",
@@ -24,7 +48,6 @@ namespace Blog.Infrastructure.Files
             [".jpeg"] = "image/jpeg",
             [".gif"] = "image/gif",
             [".webp"] = "image/webp",
-            [".svg"] = "image/svg+xml",
             [".ico"] = "image/x-icon",
             [".mp4"] = "video/mp4",
             [".webm"] = "video/webm",

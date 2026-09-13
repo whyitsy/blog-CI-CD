@@ -79,9 +79,15 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
       </nav>
 
       <div class="side-footer">
-        <button class="back-link" @click="router.push('/me')">我的写作台</button>
+        <span class="side-footer-label">快捷入口</span>
+        <button class="back-link" @click="router.push('/me')">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          我的写作台
+        </button>
         <button class="back-link" @click="router.push('/')">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 12H5m0 0 6-6m-6 6 6 6" />
           </svg>
           返回前台
@@ -131,6 +137,14 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   padding: var(--space-6) var(--space-3);
   background: var(--bg-surface);
   border-right: 1px solid var(--border-subtle);
+  /* 侧栏固定，不随右侧内容滚动。
+     改之前这里没有任何高度约束，外层 .admin-shell 是 align-items: stretch，
+     于是侧栏跟着内容一起变高、整个滚走 —— 长列表页上按钮就"消失"了。
+     用 sticky + 100vh：内容比视口高时侧栏保持贴顶，自身超高时独立滚动。 */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .admin-brand {
@@ -186,22 +200,48 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   background: color-mix(in srgb, var(--brand-500) 12%, transparent);
 }
 
+/* 底部「快捷入口」。
+   以前这里是两个透明的 13px 小字按钮（.back-link，颜色 text-subtle），
+   与上方 .nav-item（有 padding/圆角/悬停底色/图标）视觉权重差太远，
+   用户第一时间找不到 —— 现在改成与 .nav-item 完全同规格的样式。 */
+.side-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.side-footer-label {
+  padding: 0 var(--space-3) var(--space-1);
+  font: var(--text-caption);
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 .back-link {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 100%;
   padding: var(--space-3);
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
-  font-size: 13px;
-  color: var(--text-subtle);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
   text-align: left;
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 .back-link:hover {
-  color: var(--brand-500);
+  color: var(--text-strong);
+  background: var(--bg-raised);
+}
+.back-link svg {
+  flex-shrink: 0;
 }
 
 /* ---------- 主内容区 ---------- */
@@ -258,12 +298,6 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
 .btn-logout:hover {
   border-color: #e35151;
   color: #e35151;
-}
-
-.side-footer {
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .admin-content {

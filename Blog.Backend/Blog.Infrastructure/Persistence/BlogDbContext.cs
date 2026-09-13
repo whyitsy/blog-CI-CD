@@ -72,7 +72,7 @@ namespace Blog.Infrastructure.Persistence
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.Content).IsRequired();
-                entity.Property(e => e.Summary).HasMaxLength(120);
+                entity.Property(e => e.Summary).HasMaxLength(200);
                 entity.Property(e => e.CoverImage).HasMaxLength(500);
                 entity.HasIndex(e => e.PublishedAt);                 // 列表页按发布时间排序
                 entity.HasIndex(e => e.CategoryId);                 // 按分类过滤

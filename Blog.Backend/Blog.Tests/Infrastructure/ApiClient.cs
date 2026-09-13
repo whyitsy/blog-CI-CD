@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -78,4 +78,7 @@ public static class Codes
     public const int Forbidden = 4030;
     public const int NotFound = 4040;
     public const int ConcurrencyConflict = 4090;
+
+    /// <summary>系统异常。断言「不能是 5xx」时要用到</summary>
+    public const int InternalError = 5000;
 }

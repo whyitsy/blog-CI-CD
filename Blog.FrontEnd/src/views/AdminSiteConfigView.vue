@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { deleteSocialLink, getSiteConfig, getSocialLinks, saveSocialLinks, updateSiteConfig } from '@/api/site'
 import { uploadFile } from '@/api/files'
+import { ACCEPT_IMAGE } from '@/utils/media'
 import FormSkeleton from '@/components/skeleton/FormSkeleton.vue'
 import SocialIcon from '@/components/common/SocialIcon.vue'
 import { useSiteStore } from '@/stores/site'
@@ -295,7 +296,7 @@ onMounted(load)
               <div class="media-buttons">
                 <label class="btn-ghost">
                   {{ uploadingLogo ? '上传中...' : basic.siteLogo ? '更换 Logo' : '上传 Logo' }}
-                  <input type="file" accept="image/*" hidden :disabled="uploadingLogo" @change="onPickLogo" />
+                  <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploadingLogo" @change="onPickLogo" />
                 </label>
                 <button
                   v-if="basic.siteLogo"
@@ -332,7 +333,7 @@ onMounted(load)
             </div>
             <label class="bg-add">
               {{ uploadingBg ? '上传中...' : '+ 上传' }}
-              <input type="file" accept="image/*" hidden :disabled="uploadingBg" @change="onPickBackground" />
+              <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploadingBg" @change="onPickBackground" />
             </label>
           </div>
           <span class="hint">
@@ -376,9 +377,11 @@ onMounted(load)
               <SocialIcon v-if="row.icon" :icon="row.icon" :name="row.name" />
               <span v-else class="icon-empty">?</span>
             </span>
-            <input v-model="row.name" class="input" placeholder="GitHub" />
-            <input v-model="row.icon" class="input" placeholder="github" />
-            <input v-model="row.url" class="input" placeholder="https://..." />
+            <!-- maxlength 与后端 FieldLimits.SocialLinkName/Icon/Url 一致（50/50/500）：
+                 这三个框以前没有任何长度限制，超长时会一路穿到数据库 -->
+            <input v-model="row.name" class="input" maxlength="50" placeholder="GitHub" />
+            <input v-model="row.icon" class="input" maxlength="50" placeholder="github" />
+            <input v-model="row.url" class="input" maxlength="500" placeholder="https://..." />
             <label class="switch">
               <input v-model="row.isVisible" type="checkbox" />
               <span>{{ row.isVisible ? '显示' : '隐藏' }}</span>

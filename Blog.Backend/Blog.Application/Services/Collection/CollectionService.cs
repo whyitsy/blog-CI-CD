@@ -1,4 +1,4 @@
-using Blog.Application.Common;
+﻿using Blog.Application.Common;
 using Blog.Application.Common.Exceptions;
 using Blog.Application.Interfaces;
 using Blog.Domain.Entities;
@@ -52,7 +52,7 @@ namespace Blog.Application.Services.Collection
 
         public async Task<CollectionDto> CreateAsync(CreateCollectionRequest request, CancellationToken cancellationToken = default)
         {
-            Validate(request.Title, request.Slug);
+            Validate(request.Title, request.Slug, request.Description);
 
             var slug = NormalizeSlug(request.Slug);
             if (await _collections.ExistsBySlugAsync(slug, cancellationToken: cancellationToken))
@@ -75,7 +75,7 @@ namespace Blog.Application.Services.Collection
 
         public async Task<CollectionDto> UpdateAsync(Guid id, UpdateCollectionRequest request, CancellationToken cancellationToken = default)
         {
-            Validate(request.Title, request.Slug);
+            Validate(request.Title, request.Slug, request.Description);
 
             var collection = await _collections.GetByIdAsync(id, cancellationToken)
                 ?? throw new BusinessException("专栏不存在", ErrorCodes.NotFound);
@@ -187,19 +187,27 @@ namespace Blog.Application.Services.Collection
         /// <summary>slug 统一小写，保证 URL 稳定且唯一索引生效</summary>
         private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();
 
-        private static void Validate(string title, string slug)
+        /// <summary>
+        /// 专栏入参校验。
+        ///
+        /// <para>简介（Description，varchar 500）此前没有应用层校验 ——
+        /// 前端有 <c>maxlength</c>，但那只挡得住界面，<c>curl</c> 直改仍会撞到数据库约束。</para>
+        /// </summary>
+        private static void Validate(string title, string slug, string? description)
         {
             if (string.IsNullOrWhiteSpace(title))
                 throw new BusinessException("专栏标题不能为空", ErrorCodes.InvalidArgument);
-            if (title.Length > 200)
-                throw new BusinessException("专栏标题长度不能超过 200", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(title, FieldLimits.CollectionTitle, "专栏标题");
+
             if (string.IsNullOrWhiteSpace(slug))
                 throw new BusinessException("专栏标识（slug）不能为空", ErrorCodes.InvalidArgument);
-            if (slug.Length > 200)
-                throw new BusinessException("专栏标识长度不能超过 200", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(slug, FieldLimits.CollectionSlug, "专栏标识");
+
             // slug 用于 URL，限制为安全字符集，避免出现需要转义或歧义的路径
             if (!System.Text.RegularExpressions.Regex.IsMatch(slug, @"^[a-z0-9]+(?:-[a-z0-9]+)*$"))
                 throw new BusinessException("专栏标识只能包含小写字母、数字与中划线（如 my-series）", ErrorCodes.InvalidArgument);
+
+            FieldLimits.EnsureLength(description, FieldLimits.CollectionDescription, "专栏简介");
         }
     }
 }

@@ -69,6 +69,7 @@ namespace Blog.Application.Services.Site
         {
             if (string.IsNullOrWhiteSpace(request.Key))
                 throw new BusinessException("配置项 Key 不能为空", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(request.Key, FieldLimits.SiteConfigKey, "配置项 Key");
 
             var value = NormalizeConfigValue(request.Key, request.Value);
 
@@ -137,6 +138,12 @@ namespace Blog.Application.Services.Site
             {
                 if (string.IsNullOrWhiteSpace(item.Name) || string.IsNullOrWhiteSpace(item.Url))
                     throw new BusinessException("社交链接的名称与地址不能为空", ErrorCodes.InvalidArgument);
+
+                // 长度校验：Name/Icon/Url 在库里分别是 varchar(50)/(50)/(500)，
+                // 前端这三个输入框**没有 maxlength**，不校验就是又一条「500 而不是 4001」的路
+                FieldLimits.EnsureLength(item.Name, FieldLimits.SocialLinkName, "社交链接名称");
+                FieldLimits.EnsureLength(item.Icon, FieldLimits.SocialLinkIcon, "社交链接图标");
+                FieldLimits.EnsureLength(item.Url, FieldLimits.SocialLinkUrl, "社交链接地址");
 
                 SocialLink link;
                 if (item.Id.HasValue)
