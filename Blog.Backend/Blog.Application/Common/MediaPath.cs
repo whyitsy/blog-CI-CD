@@ -37,8 +37,19 @@ namespace Blog.Application.Common
         /// <summary>本服务签发媒体地址的固定前缀（见 LocalFileStorageService.SaveAsync 的返回值）</summary>
         public const string OwnedPrefix = "/api/files/";
 
-        /// <summary>单个媒体地址的长度上限</summary>
-        public const int MaxLength = 512;
+        /// <summary>
+        /// 单个媒体地址的长度上限。
+        ///
+        /// <para>取值 = <b>所有目标列里最小的那一个</b>：<c>Authors.Avatar</c> 是
+        /// <c>varchar(200)</c>，而 <c>Posts.CoverImage</c> / <c>Collections.CoverImage</c>
+        /// 是 <c>varchar(500)</c>。取最小值才能保证「通过白名单的值一定能存进任何一个目标列」——
+        /// 否则会出现 201~500 字符的地址**过了白名单、却在写头像时撞数据库约束**的怪事，
+        /// 而那又会表现为「服务器内部错误」。</para>
+        ///
+        /// <para>实际上本站生成的地址约 53 字符
+        /// （<c>/api/files/yyyy/MM/{32位十六进制}.webp</c>），200 有充足余量。</para>
+        /// </summary>
+        public const int MaxLength = FieldLimits.AuthorAvatar;
 
         /// <summary>列表型字段（如首屏背景图）最多允许的条数</summary>
         public const int MaxItems = 20;

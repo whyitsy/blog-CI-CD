@@ -1,4 +1,4 @@
-using Blog.Application.Common;
+﻿using Blog.Application.Common;
 using Blog.Application.Common.Exceptions;
 using Blog.Application.Interfaces;
 using Blog.Domain.IRepository;
@@ -34,7 +34,7 @@ namespace Blog.Application.Services.Author
 
         public async Task<AuthorDto> CreateAsync(CreateAuthorRequest request, CancellationToken cancellationToken = default)
         {
-            ValidateNameAndEmail(request.Name, request.Email);
+            ValidateProfile(request.Name, request.Email, request.Bio);
 
             var author = new AuthorEntity(
                 request.Name.Trim(),
@@ -71,7 +71,7 @@ namespace Blog.Application.Services.Author
 
         public async Task<AuthorDto> UpdateAsync(Guid id, UpdateAuthorRequest request, CancellationToken cancellationToken = default)
         {
-            ValidateNameAndEmail(request.Name, request.Email);
+            ValidateProfile(request.Name, request.Email, request.Bio);
 
             if (request.Version < 1)
                 throw new BusinessException("缺少合法的版本号，无法进行并发控制", ErrorCodes.InvalidArgument);
@@ -97,16 +97,24 @@ namespace Blog.Application.Services.Author
             return ToDto(author);
         }
 
-        private static void ValidateNameAndEmail(string name, string email)
+        /// <summary>
+        /// 作者资料入参校验。
+        ///
+        /// <para><b>个人简介（Bio，varchar 500）此前没有应用层校验</b>：前端虽然有
+        /// <c>maxlength</c>，但那只挡得住界面 —— <c>curl</c> 直改依旧会撞到数据库约束，
+        /// 拿到的是「服务器内部错误」而不是「简介太长了」。</para>
+        /// </summary>
+        private static void ValidateProfile(string name, string email, string? bio)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new BusinessException("作者名称不能为空", ErrorCodes.InvalidArgument);
-            if (name.Length > 100)
-                throw new BusinessException("作者名称长度不能超过 100", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(name, FieldLimits.AuthorName, "作者名称");
+
             if (string.IsNullOrWhiteSpace(email))
                 throw new BusinessException("邮箱不能为空", ErrorCodes.InvalidArgument);
-            if (email.Length > 100)
-                throw new BusinessException("邮箱长度不能超过 100", ErrorCodes.InvalidArgument);
+            FieldLimits.EnsureLength(email, FieldLimits.AuthorEmail, "邮箱");
+
+            FieldLimits.EnsureLength(bio, FieldLimits.AuthorBio, "个人简介");
         }
 
         private static AuthorDto ToDto(AuthorEntity a) =>
