@@ -13,7 +13,7 @@
 //    它们不影响任何断言，而且禁用比删除更接近真实运营行为。
 // ============================================================================
 
-import { main, login } from '../lib/cdp.mjs'
+import { main, login, apiGet, apiSend } from '../lib/cdp.mjs'
 import { config, runId } from '../lib/config.mjs'
 
 const stamp = runId()
@@ -86,4 +86,39 @@ await main('09-admin-users', async ({ page, run }) => {
     dupText.includes('已被占用'),
     dupText.split('\n').find((l) => l.includes('占用')) ?? dupText.slice(0, 120).replace(/\n/g, ' / '),
   )
+
+  // ── 清理：把本次创建的账号**停用**（尽力而为）──────────────────────────
+  //
+  // ⚠️ `/api/users` **没有删除接口**，只有 `disable`（不物理删除，保留审计线索）。
+  //    所以这里做不到"删干净"，只能停用。
+  //
+  //    为什么这一步不能省：这个检查创建的账号是 **IsActive=true、密码写死在脚本里**
+  //    （E2eTest@12345）的**可直接登录的真实凭据**。
+  //    让它们留在开发库里，比留一行死数据危险得多 ——
+  //    哪天开发环境被同事/自己用手机连上，那就是两个能登进来的账号。
+  //    （这一点是清理开发库残留数据时才意识到的：先跑一轮验证，DB 里就多了两个活账号。）
+  try {
+    await login(page, config.admin)
+    const users = await apiGet(page, '/api/users')
+    const all = users?.body?.data ?? []
+    let disabled = 0
+    for (const email of [NEW_EMAIL, DUP_EMAIL]) {
+      const hit = (Array.isArray(all) ? all : []).find((u) => u.email === email)
+      if (!hit?.id) {
+        run.note(`⚠️ 没在账号列表里找到 ${email}（可能已被停用后过滤），未处理`)
+        continue
+      }
+      // 同 04/10：disable 也要带乐观锁版本号
+      const r = await apiSend(page, 'POST', `/api/users/${hit.id}/disable?version=${hit.version}`)
+      if (r?.status === 200) {
+        disabled++
+        run.note(`已停用测试账号 ${email}`)
+      } else {
+        run.note(`⚠️ 停用失败（HTTP ${r?.status}）：${email} —— 这是一个**仍可登录**的测试账号`)
+      }
+    }
+    if (disabled === 0) run.note('⚠️ 本次没有停用任何账号，开发库里会留下可登录的测试账号')
+  } catch (err) {
+    run.note(`⚠️ 清理过程出错（不影响结论）：${err.message}`)
+  }
 })
