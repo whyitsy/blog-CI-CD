@@ -539,6 +539,27 @@ jobs:
 > 再用一个空 trx 确认脚本**确实会失败退出** ——
 > 否则你无法区分「检查通过了」和「检查根本没生效」。
 
+#### ⚠️ 触发条件是 `push: [main]` + `pull_request: [main]`
+
+这意味着**往功能分支单独 push 不会触发流水线**，只有两种情况会跑：
+
+| 事件 | 什么时候跑 |
+|---|---|
+| `push` 到 `main` | 合并之后（或在开启分支保护之前的直推） |
+| `pull_request` 目标是 `main` | **打开 / 更新 PR 时** |
+
+所以「我推了分支，怎么 Actions 里什么都没有」不是故障，是设计 ——
+它省掉了一半无效运行（没人看的分支不需要每次都跑）。
+
+> 💡 **副作用要知道**：功能分支在**开 PR 之前拿不到任何 CI 反馈**。
+> 如果你希望分支一推上去就先自查，把触发条件改成：
+> ```yaml
+> on:
+>   push:
+>     branches: ['**']      # 所有分支
+> ```
+> 代价是 CI 分钟数翻倍。当前选择是「开 PR 时再跑」。
+
 > ✅ **这一步已于 2026-09-13 完成**：**分支保护（Required Status Checks）**已开启，
 > 三个作业全部标记为 Required，并做了正反两个方向的实测（PR 合并按钮变灰 / 直推 main 被 `GH006` 拒绝）。
 > 现在流水线不只是"会跑一遍"，而是**有约束力**（§3.2 铁律二、§9.5）。
@@ -775,7 +796,15 @@ jobs:
 | 方向 | 手段 | 实测结果 |
 |---|---|---|
 | **PR 合并**被拦 | 开一个含**故意失败测试**的 PR（`BranchProtectionCheck.cs`），看合并按钮状态 | ✅ 三条 Required 检查中「后端」变红，**Merge 按钮变灰不可点** |
-| **直推 main**被拦 | 把上述分支直接 `git push origin <bad-branch>:main` | ✅ 被拒：`remote: error: GH006: Protected branch update failed for refs/heads/main. - Required status check "后端（构建 + 测试）" is failing.`，本地 `origin/main` 未变 |
+| **直推 main**被拦（第一次） | 把上述**检查失败**的分支直接 `git push origin <bad-branch>:main` | ✅ 被拒：`GH006: Protected branch update failed for refs/heads/main. - Required status check "后端（构建 + 测试）" is failing.` |
+| **直推 main**被拦（第二次，更关键） | 等验证分支清理后，再把**正常的功能分支**（检查根本还没跑过）直推 `main` | ✅ 被拒，且**两条规则都报了出来**：<br>`- Changes must be made through a pull request.`<br>`- 3 of 3 required status checks are expected.` |
+
+> 第二次验证比第一次**更有价值**：第一次只报出了「状态检查失败」，
+> 无法回答「如果检查是绿的，能不能直推」这个真正的问题。
+> 第二次用一个**没有跑过任何检查**的分支去推，服务端明确回了
+> `Changes must be made through a pull request` ——
+> 这才是「Require a pull request before merging」真正生效的直接证据，
+> 也是 §3.2 铁律一（不能直推主分支）的落地证明。
 
 > ⚠️ **一个容易搞错的细节（我自己先搞错过）**：
 > 「Require status checks」**不只是**管 PR 合并，它对**直接 push** 同样生效——
