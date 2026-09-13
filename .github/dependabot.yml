@@ -88,6 +88,37 @@ updates:
           - "pinia"
           - "@vue/*"
 
+    ignore:
+      # ⚠️ 与上面 ImageSharp 那条同理，但原因不同：这次是**上游还没跟上**，
+      #    不是我们不想升。改动前请先读这一段。
+      #
+      # `typescript` 刻意留在 6.x：v7 是原生（Go）重写版，
+      # 不再从 package.json 导出 `./lib/tsc` 子路径，
+      # 而 `vue-tsc` 恰恰是靠 `require('typescript/lib/tsc')` 工作的 —— 实测直接崩：
+      #
+      #   Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './lib/tsc'
+      #   is not defined by "exports" in node_modules/typescript/package.json
+      #       at resolveTscPath (node_modules/vue-tsc/index.js:73:43)
+      #
+      # ⚠️ 关键点：`vue-tsc` 的 peerDependencies 写的是 `typescript: ">=5.0.0"`，
+      #    7.0.2 **名义上满足**这个范围。所以 Dependabot 会一直提这个合不了的 PR，
+      #    **不能指望 peer range 挡住它**，只能在这里显式屏蔽。
+      #
+      # 实测记录（2026-09-14）：
+      #   vue-tsc 最新版 3.3.11（与仓库里的一致，没有支持 7.x 的新版本）
+      #   在 PR #9 的分支上把 lock 修好、`npm ci` 通过之后，
+      #   `npm run build`（= `vue-tsc -b && vite build`）仍然崩在上面那行错误。
+      #
+      # 什么时候可以删掉这条规则：
+      #   跑 `npm view vue-tsc version` 与 `npm view vue-tsc peerDependencies`，
+      #   直到它明确支持 7.x（或项目改用 tsgo 工具链）为止。
+      #   验证记录见 docs/06-技术债与待办.md。
+      #
+      # 为什么不用 dependency-name 单写：同上，会波及安全更新通道。
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
+
   # ── GitHub Actions 自身 ────────────────────────────────────────────────
   # 流水线里用的 actions/checkout@v4 这类也是依赖，也会有安全公告。
   # 这一条最容易被忘掉，但它零成本。
