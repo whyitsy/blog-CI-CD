@@ -79,6 +79,9 @@ public static class Codes
     public const int NotFound = 4040;
     public const int ConcurrencyConflict = 4090;
 
+    /// <summary>请求体过大（如上传文件超过体积限制）。HTTP 状态码为 413</summary>
+    public const int PayloadTooLarge = 4130;
+
     /// <summary>系统异常。断言「不能是 5xx」时要用到</summary>
     public const int InternalError = 5000;
 }
