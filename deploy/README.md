@@ -1,6 +1,6 @@
 # 部署相关产物
 
-> 记录日期：2026-09-10 ｜ 相关说明见 [../docs/01-项目初始化与配置.md](../docs/01-项目初始化与配置.md) §6
+> 记录日期：2026-09-10 ｜ 相关说明见 [../docs/01-快速开始.md](../docs/01-快速开始.md) §5.4
 
 本目录放**部署期**需要的产物（镜像定义、初始化脚本）。
 它不属于任何 .NET 工程，因此不参与 `dotnet build`。
@@ -65,7 +65,7 @@ docker build -f deploy/postgres-zhparser.Dockerfile -t blog-postgres-zhparser:18
 **幂等**：全部用 `CREATE EXTENSION IF NOT EXISTS` 与 `DO` 块判断，重复执行安全。
 
 > ⚠️ **对已存在的数据库，这个脚本不会重跑。**
-> 因此**扩展与检索配置的权威来源是 EF 迁移**（见 [../docs/06-数据库设计.md](../docs/06-数据库设计.md) §8.3）。
+> 因此**扩展与检索配置的权威来源是 EF 迁移**（见 [../docs/02-架构与数据模型.md](../docs/02-架构与数据模型.md) §9.4）。
 > 本脚本只是让全新环境开箱可用，**不是必需的前置条件**。
 >
 > ✅ **2026-09-13 起两处才真正一致**：此前迁移虽然包含同样的语句，但把
@@ -73,7 +73,7 @@ docker build -f deploy/postgres-zhparser.Dockerfile -t blog-postgres-zhparser:18
 > 于是**迁移链自己无法从零建库** —— 全新库能否跑起来完全依赖本脚本先执行。
 > 顺序已修正，迁移现在能独立完成建库；集成测试也不再预建配置，
 > 而是在完全干净的库上跑迁移（缺口 G12，见
-> [../docs/09-已知限制与技术债.md](../docs/09-已知限制与技术债.md) §5.11）。
+> [../docs/06-技术债与待办.md](../docs/06-技术债与待办.md) §2 的 G12）。
 
 脚本末尾有一段自检，会在容器日志中打印分词结果，便于确认生效：
 
@@ -127,7 +127,7 @@ docker stop pgsql && docker rename pgsql pgsql-old
 
 # 3) 用自定义镜像启动新容器，挂同一个数据卷
 docker run -d --name pgsql \
-  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=blog \
+  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=blog_stage2 \
   -p 5432:5432 \
   -v <上一步打印的卷名>:/var/lib/postgresql \
   blog-postgres-zhparser:18
@@ -161,7 +161,7 @@ docker cp pgsql:/tmp/b.sql D:/tmpbuild/pgbackup/
 # 2) 换容器（数据卷沿用）
 docker stop pgsql && docker rename pgsql pgsql-old
 docker run -d --name pgsql \
-  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=blog \
+  -e POSTGRES_USER=kky -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=blog_stage2 \
   -p 5432:5432 \
   -v 3aaacea5a25e5a7f7b0982fec9347baa1eeeede50c4e0541dbf704d818d77ce6:/var/lib/postgresql \
   blog-postgres-zhparser:18
@@ -214,7 +214,7 @@ docker rm pgsql-old
 
 ## 6. 应用镜像与本地整栈编排（`docker-compose.yml`）
 
-> 记录日期：2026-09-12 ｜ 相关说明见 [../docs/07-开发与运维手册.md](../docs/07-开发与运维手册.md) §8.6
+> 记录日期：2026-09-12 ｜ 相关说明见 [../docs/05-运维与部署手册.md](../docs/05-运维与部署手册.md) §8.4
 
 ### 6.1 本目录新增的产物
 
@@ -229,7 +229,7 @@ docker rm pgsql-old
 
 ### 6.2 为什么要在本地跑「生产形态」
 
-`docs/07` §8.2 预告过三个**只在部署后才暴露**的坑。用这套 compose，
+`docs/05` §8.2 预告过的**只在部署后才暴露**的坑。用这套 compose，
 它们**全部可以在本地复现**，从而在买服务器之前就踩完：
 
 | 坑 | 本地复现方式 |
@@ -360,7 +360,7 @@ proxy_set_header X-Forwarded-For $remote_addr;
 若将来前面再加 CDN / 云负载均衡，需要改用 `ngx_http_realip_module` 信任上游网段，
 **而不能简单回到追加写法**。
 
-> **更彻底的方案**（`[计划中]`，见 [../docs/09-已知限制与技术债.md](../docs/09-已知限制与技术债.md)）：
+> **更彻底的方案**（`[计划中]`，见 [../docs/06-技术债与待办.md](../docs/06-技术债与待办.md) §2 的 G10）：
 > 应用侧改用 ASP.NET Core 的 `ForwardedHeadersMiddleware`，
 > 通过 `KnownProxies` / `KnownNetworks` 显式声明**只信任哪些代理**发来的转发头。
 > 那才是把"信任边界"表达在代码里，而不是依赖部署配置。

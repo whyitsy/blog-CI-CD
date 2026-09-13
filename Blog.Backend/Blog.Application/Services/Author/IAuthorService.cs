@@ -9,7 +9,7 @@ namespace Blog.Application.Services.Author
         /// <summary>
         /// 创建作者。
         /// Author 是**内容层**的署名对象（与 Post/Tag/Category 同层），
-        /// 不是登录账号 —— 账号走 /api/users（见 docs/10-决策记录.md §2.1 / T1）。
+        /// 不是登录账号 —— 账号走 /api/users（见 archive/决策记录.md §2.1 / T1）。
         /// </summary>
         Task<AuthorDto> CreateAsync(CreateAuthorRequest request, CancellationToken cancellationToken = default);
 

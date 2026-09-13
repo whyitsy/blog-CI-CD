@@ -1,10 +1,10 @@
-﻿using Blog.Domain.Entities.Base;
+using Blog.Domain.Entities.Base;
 
 namespace Blog.Domain.Entities
 {
     public class Tag : BaseEntity
     {
-       public string Name { get; private set; } = string.Empty;
+        public string Name { get; private set; } = string.Empty;
 
         // 导航属性
         public ICollection<Post> Posts { get; set; } = [];

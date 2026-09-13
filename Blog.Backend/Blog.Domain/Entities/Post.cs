@@ -11,7 +11,7 @@ public class Post : BaseEntity
     public string Title { get; private set; } = string.Empty;
     public string Content { get; private set; } = string.Empty;
 
-    /// <summary>摘要。为空时自动取正文前 50 字；作者填写后不再被自动覆盖（见 docs/10-决策记录.md §2.2 / T4）</summary>
+    /// <summary>摘要。为空时自动取正文前 50 字；作者填写后不再被自动覆盖（见 archive/决策记录.md §2.2 / T4）</summary>
     public string Summary { get; private set; } = string.Empty;
 
     public string CoverImage { get; private set; } = string.Empty;

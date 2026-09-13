@@ -323,7 +323,7 @@ function isSelf(u: UserListItem) {
 
     <p class="foot-hint">
       说明：本页只管理**登录账号**。文章的署名对象（Author）是内容，属「内容层」，
-      需要单独的「作者管理」页面（见 docs/10-决策记录.md T14）。
+      需要单独的「作者管理」页面（见 archive/决策记录.md §2.3（T14b））。
     </p>
   </section>
 </template>

@@ -1,4 +1,4 @@
-﻿using Blog.Application.Services.Auth;
+using Blog.Application.Services.Auth;
 using Blog.Application.Services.Author;
 using Blog.Application.Services.Category;
 using Blog.Application.Services.Collection;
