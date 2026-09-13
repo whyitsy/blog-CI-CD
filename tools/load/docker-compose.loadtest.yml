@@ -1,0 +1,27 @@
+# ============================================================================
+# 压测专用 compose 覆盖：**关掉限流**
+#
+# 为什么必须有这个文件（learn/03 §9 热点一 / 坑 1，docs/06 §3.1 前置条件 5）：
+#   限流是按 IP 的令牌桶。压测工具从**单个 IP** 发请求，
+#   走完突发容量（default 120 / search 20 / write 30）之后，
+#   持续速率被限到 **20 RPS（default）/ 2 RPS（search、write）**，超了返回 429。
+#   如果不关，你会把**限流器的设定值**当成**应用的容量** ——
+#   测出来的不是性能，是配置。
+#
+# 用法（在仓库根目录）：
+#   # 打开限流关闭开关（只重建 webapi，PG/Redis/Nginx 不动）
+#   docker compose -f docker-compose.yml -f tools/load/docker-compose.loadtest.yml up -d webapi
+#
+#   # 压测结束后恢复原状（用基础文件重建，环境变量回到 appsettings.Production.json 的 Enabled=true）
+#   docker compose up -d webapi
+#
+# ⚠️ 两个注意：
+#   ① 这是**本地/测试环境**的手段。绝不能在对外提供服务时关限流。
+#   ② `RateLimit__Enabled` 是 .NET 配置的标准环境变量写法（`__` = 层级分隔符），
+#      不需要改任何 appsettings 文件，因此**不会**把压测配置误提交进仓库。
+# ============================================================================
+
+services:
+  webapi:
+    environment:
+      RateLimit__Enabled: "false"
