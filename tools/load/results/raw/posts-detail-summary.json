@@ -1,0 +1,23 @@
+{
+  "endpoint": "posts-detail",
+  "script": "posts-detail",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 301,
+  "rps": 9.95,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 4.41,
+  "p90_ms": 5.63,
+  "p95_ms": 5.99,
+  "p99_ms": 11.48,
+  "avg_ms": 4.88,
+  "min_ms": 3.18,
+  "max_ms": 62.46,
+  "slo_p95_ms": 300,
+  "slo_pass": true,
+  "rate": 10,
+  "duration": "30s",
+  "passed": true
+}

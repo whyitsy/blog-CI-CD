@@ -1,0 +1,7 @@
+# 实验 C 对照组：GET /api/posts/{id} 只打同一篇（同一行的 UPDATE）
+# 与基线里 posts-detail（100 篇分散）同载荷同时长：10 RPS × 30s
+
+  请求数 301 ｜ 实际 RPS 9.95 ｜ 丢弃迭代 0
+  HTTP 失败率 0% ｜ 业务失败率(code!==0) 0% ｜ checks 通过率 100%
+  延迟 p50 4.41ms ｜ p90 5.63ms ｜ p95 5.99ms ｜ p99 11.48ms ｜ max 62.46ms
+  SLO p95 < 300ms ⇒ ✅ 通过

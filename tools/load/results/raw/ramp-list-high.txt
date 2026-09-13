@@ -1,0 +1,159 @@
+######## RATE=1200 ########
+blog-webapi-1 125.24%
+blog-pgsql-1 0.00%
+blog-nginx-1 13.19%
+blog-redis-1 4.22%
+pgsql 0.00%
+redis 0.09%
+blog-webapi-1 123.51%
+blog-pgsql-1 0.22%
+blog-nginx-1 14.19%
+blog-redis-1 4.01%
+pgsql 0.00%
+redis 0.08%
+blog-webapi-1 130.76%
+blog-pgsql-1 2.93%
+blog-nginx-1 14.77%
+blog-redis-1 5.68%
+pgsql 0.00%
+redis 0.10%
+blog-webapi-1 129.82%
+blog-pgsql-1 0.00%
+blog-nginx-1 15.36%
+blog-redis-1 4.53%
+pgsql 0.00%
+redis 0.09%
+blog-webapi-1 116.13%
+blog-pgsql-1 0.00%
+blog-nginx-1 13.44%
+blog-redis-1 3.81%
+pgsql 0.00%
+redis 0.09%
+  请求数 18001 ｜ 实际 RPS 1196.92 ｜ 丢弃迭代 0
+  HTTP 失败率 0% ｜ 业务失败率(code!==0) 0% ｜ checks 通过率 100%
+  延迟 p50 0.77ms ｜ p90 1.02ms ｜ p95 1.21ms ｜ p99 1.62ms ｜ max 38.73ms
+  SLO p95 < 300ms ⇒ ✅ 通过
+blog-webapi-1 0.07%
+blog-pgsql-1 3.16%
+blog-nginx-1 0.00%
+blog-redis-1 2.52%
+pgsql 0.00%
+redis 0.12%
+blog-webapi-1 0.04%
+blog-pgsql-1 0.01%
+blog-nginx-1 0.00%
+blog-redis-1 0.29%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 0.04%
+blog-pgsql-1 0.00%
+blog-nginx-1 0.00%
+blog-redis-1 0.32%
+pgsql 0.00%
+redis 0.12%
+######## RATE=1600 ########
+blog-webapi-1 158.12%
+blog-pgsql-1 3.29%
+blog-nginx-1 21.13%
+blog-redis-1 6.87%
+pgsql 0.00%
+redis 0.09%
+blog-webapi-1 168.19%
+blog-pgsql-1 0.05%
+blog-nginx-1 18.69%
+blog-redis-1 6.06%
+pgsql 0.00%
+redis 0.09%
+blog-webapi-1 158.46%
+blog-pgsql-1 0.06%
+blog-nginx-1 15.87%
+blog-redis-1 5.42%
+pgsql 0.00%
+redis 0.10%
+blog-webapi-1 173.72%
+blog-pgsql-1 3.67%
+blog-nginx-1 19.20%
+blog-redis-1 6.53%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 104.24%
+blog-pgsql-1 0.09%
+blog-nginx-1 11.21%
+blog-redis-1 3.87%
+pgsql 0.00%
+redis 0.13%
+  请求数 24001 ｜ 实际 RPS 1594.91 ｜ 丢弃迭代 0
+  HTTP 失败率 0% ｜ 业务失败率(code!==0) 0% ｜ checks 通过率 100%
+  延迟 p50 0.84ms ｜ p90 1.31ms ｜ p95 1.52ms ｜ p99 2.06ms ｜ max 49.2ms
+  SLO p95 < 300ms ⇒ ✅ 通过
+blog-webapi-1 0.07%
+blog-pgsql-1 0.02%
+blog-nginx-1 0.00%
+blog-redis-1 0.30%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 0.06%
+blog-pgsql-1 1.23%
+blog-nginx-1 0.00%
+blog-redis-1 1.63%
+pgsql 0.00%
+redis 0.13%
+blog-webapi-1 0.07%
+blog-pgsql-1 0.04%
+blog-nginx-1 0.00%
+blog-redis-1 0.33%
+pgsql 0.00%
+redis 0.12%
+######## RATE=2400 ########
+blog-webapi-1 228.58%
+blog-pgsql-1 0.01%
+blog-nginx-1 31.95%
+blog-redis-1 8.21%
+pgsql 0.00%
+redis 0.10%
+blog-webapi-1 229.64%
+blog-pgsql-1 0.01%
+blog-nginx-1 31.84%
+blog-redis-1 7.99%
+pgsql 0.00%
+redis 0.10%
+blog-webapi-1 271.49%
+blog-pgsql-1 0.00%
+blog-nginx-1 36.79%
+blog-redis-1 9.75%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 235.28%
+blog-pgsql-1 0.27%
+blog-nginx-1 29.98%
+blog-redis-1 8.24%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 211.71%
+blog-pgsql-1 0.00%
+blog-nginx-1 26.14%
+blog-redis-1 7.13%
+pgsql 0.00%
+redis 0.09%
+  请求数 35997 ｜ 实际 RPS 2391.96 ｜ 丢弃迭代 4
+  HTTP 失败率 0% ｜ 业务失败率(code!==0) 0% ｜ checks 通过率 100%
+  延迟 p50 1.02ms ｜ p90 1.59ms ｜ p95 1.82ms ｜ p99 2.36ms ｜ max 48.76ms
+  SLO p95 < 300ms ⇒ ✅ 通过
+blog-webapi-1 0.04%
+blog-pgsql-1 0.01%
+blog-nginx-1 0.00%
+blog-redis-1 0.29%
+pgsql 0.00%
+redis 0.12%
+blog-webapi-1 0.14%
+blog-pgsql-1 0.00%
+blog-nginx-1 0.01%
+blog-redis-1 0.30%
+pgsql 0.00%
+redis 0.11%
+blog-webapi-1 0.05%
+blog-pgsql-1 0.00%
+blog-nginx-1 0.00%
+blog-redis-1 0.31%
+pgsql 0.00%
+redis 0.12%

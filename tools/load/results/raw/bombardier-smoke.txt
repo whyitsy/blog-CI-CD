@@ -1,0 +1,160 @@
+# B0 冒烟交叉验证：bombardier -r 10 -d 30s（与 k6 00-smoke 同载荷、同 URL）
+# 目的：用第二个独立工具确认 k6 的数字不是工具自身造成的
+
+Bombarding http://127.0.0.1:8080/api/posts?page=1&pageSize=12 for 30s using 125 connection(s)
+ 00m29s
+ 00m28s
+ 00m28s
+ 00m28s
+ 00m28s
+ 00m28s
+ 00m27s
+ 00m27s
+ 00m27s
+ 00m27s
+ 00m27s
+ 00m26s
+ 00m26s
+ 00m26s
+ 00m26s
+ 00m26s
+ 00m25s
+ 00m25s
+ 00m25s
+ 00m25s
+ 00m25s
+ 00m24s
+ 00m24s
+ 00m24s
+ 00m24s
+ 00m24s
+ 00m23s
+ 00m23s
+ 00m23s
+ 00m23s
+ 00m23s
+ 00m22s
+ 00m22s
+ 00m22s
+ 00m22s
+ 00m22s
+ 00m21s
+ 00m21s
+ 00m21s
+ 00m21s
+ 00m21s
+ 00m20s
+ 00m20s
+ 00m20s
+ 00m20s
+ 00m20s
+ 00m19s
+ 00m19s
+ 00m19s
+ 00m19s
+ 00m19s
+ 00m18s
+ 00m18s
+ 00m18s
+ 00m18s
+ 00m18s
+ 00m17s
+ 00m17s
+ 00m17s
+ 00m17s
+ 00m17s
+ 00m16s
+ 00m16s
+ 00m16s
+ 00m16s
+ 00m16s
+ 00m15s
+ 00m15s
+ 00m15s
+ 00m15s
+ 00m15s
+ 00m14s
+ 00m14s
+ 00m14s
+ 00m14s
+ 00m14s
+ 00m13s
+ 00m13s
+ 00m13s
+ 00m13s
+ 00m13s
+ 00m12s
+ 00m12s
+ 00m12s
+ 00m12s
+ 00m12s
+ 00m11s
+ 00m11s
+ 00m11s
+ 00m11s
+ 00m11s
+ 00m10s
+ 00m10s
+ 00m10s
+ 00m10s
+ 00m10s
+ 00m09s
+ 00m09s
+ 00m09s
+ 00m09s
+ 00m09s
+ 00m08s
+ 00m08s
+ 00m08s
+ 00m08s
+ 00m08s
+ 00m07s
+ 00m07s
+ 00m07s
+ 00m07s
+ 00m07s
+ 00m06s
+ 00m06s
+ 00m06s
+ 00m06s
+ 00m06s
+ 00m05s
+ 00m05s
+ 00m05s
+ 00m05s
+ 00m05s
+ 00m04s
+ 00m04s
+ 00m04s
+ 00m04s
+ 00m04s
+ 00m03s
+ 00m03s
+ 00m03s
+ 00m03s
+ 00m03s
+ 00m02s
+ 00m02s
+ 00m02s
+ 00m02s
+ 00m02s
+ 00m01s
+ 00m01s
+ 00m01s
+ 00m01s
+ 00m01s
+ 30s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec        10.03       2.76      18.26
+  Latency        1.96ms   378.97us     5.70ms
+  Latency Distribution
+     50%     1.90ms
+     75%     2.14ms
+     90%     2.39ms
+     95%     2.49ms
+     99%     2.96ms
+  HTTP codes:
+    1xx - 0, 2xx - 301, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    90.41KB/s

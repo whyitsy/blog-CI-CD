@@ -1,0 +1,23 @@
+{
+  "endpoint": "posts-archives",
+  "script": "posts-archives",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 300,
+  "rps": 9.98,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 2.31,
+  "p90_ms": 3,
+  "p95_ms": 3.25,
+  "p99_ms": 3.87,
+  "avg_ms": 2.41,
+  "min_ms": 1.74,
+  "max_ms": 3.99,
+  "slo_p95_ms": 300,
+  "slo_pass": true,
+  "rate": 10,
+  "duration": "30s",
+  "passed": true
+}

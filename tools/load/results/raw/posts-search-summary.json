@@ -1,0 +1,23 @@
+{
+  "endpoint": "posts-search",
+  "script": "posts-search",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 300,
+  "rps": 9.99,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 1.67,
+  "p90_ms": 2.13,
+  "p95_ms": 2.41,
+  "p99_ms": 7.28,
+  "avg_ms": 1.87,
+  "min_ms": 1.19,
+  "max_ms": 17.33,
+  "slo_p95_ms": 800,
+  "slo_pass": true,
+  "rate": 10,
+  "duration": "30s",
+  "passed": true
+}

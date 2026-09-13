@@ -1,0 +1,23 @@
+{
+  "endpoint": "posts-create",
+  "script": "posts-create",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 16,
+  "rps": 0.53,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 7.04,
+  "p90_ms": 7.78,
+  "p95_ms": 7.98,
+  "p99_ms": 8.25,
+  "avg_ms": 6.94,
+  "min_ms": 4.99,
+  "max_ms": 8.31,
+  "slo_p95_ms": 500,
+  "slo_pass": true,
+  "rate": 0.5,
+  "duration": "30s",
+  "passed": true
+}

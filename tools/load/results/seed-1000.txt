@@ -1,0 +1,119 @@
+# 造数据脚本：1000 篇（默认 1000）｜库 blog_stage2 @ compose 服务 pgsql
+# 标记前缀：标题 [LOADTEST] / 分类 [LOADTEST] 分类 / 标签 [LOADTEST] 标签
+# 外键目标：管理员账号 6f2a1b3c-0000-0000-0000-000000000030｜署名作者 6f2a1b3c-0000-0000-0000-000000000001｜复用已有分类 2 个 / 标签 3 个
+
+== ① 清理历史 LOADTEST 数据 ==
+--- 清理历史 LOADTEST 数据 ---
+DELETE 0
+DELETE 0
+DELETE 0
+
+== ② 灌入 1000 篇 ==
+--- 预置 LOADTEST 分类与标签 ---
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+--- 灌入 1000 篇文章 ---
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 100
+INSERT 0 500
+INSERT 0 500
+INSERT 0 500
+INSERT 0 500
+INSERT 0 500
+INSERT 0 51
+--- ANALYZE（让规划器看到新数据的统计信息）---
+ANALYZE
+ANALYZE
+ANALYZE
+--- 校验 ---
+ loadtest_posts 
+----------------
+           1000
+(1 row)
+
+ all_posts 
+-----------
+      1003
+(1 row)
+
+ published 
+-----------
+       794
+(1 row)
+
+ drafts 
+--------
+    206
+(1 row)
+
+ with_search_vector 
+--------------------
+               1000
+(1 row)
+
+ posts_total_size 
+------------------
+ 24 MB
+(1 row)
+
+ avg_content_chars | min_chars | max_chars 
+-------------------+-----------+-----------
+              3235 |      2600 |      4113
+(1 row)
+
+--- 中文全文检索抽查（关键词：缓存）---
+Timing is on.
+ fts_hits 
+----------
+      967
+(1 row)
+
+Time: 3.791 ms
+Timing is off.
+
+✅ 完成
+   灌数耗时：1.63s（612.2 篇/秒）
+   含清理总耗时：1.79s
+   清理命令：node tools/load/seed-posts.mjs --only-clean
+
+real	0m2.050s
+user	0m0.209s
+sys	0m0.124s
