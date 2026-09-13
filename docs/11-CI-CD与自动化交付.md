@@ -308,7 +308,7 @@ CI/CD 领域有一堆"规范"。下面这张表的价值在于**明确区分"该
 |---|---|---|
 | PostgreSQL 18 | 测试要跑真实迁移 | 镜像 |
 | **`zhparser` 扩展** | `Posts.SearchVector` 是**生成列**，表达式用了 `to_tsvector('chinese', ...)`。没有扩展和 `chinese` 配置，**迁移直接失败**：`42704: text search configuration "chinese" does not exist` | **必须在镜像里**（扩展不能运行时装） |
-| `chinese` 检索配置 | 同上。由 `BlogApiFactory.InitializeChineseTextSearch()` 按库创建 | 测试夹具自己建 |
+| `chinese` 检索配置 | 同上 | **EF 迁移自己建**（2026-09-13 起）。⚠️ 此前是 `BlogApiFactory.InitializeChineseTextSearch()` 预建 —— 那个绕过把「迁移链无法从零建库」这个缺陷**掩盖在了测试里**，已删除。现在集成测试在**完全干净的库**上跑迁移，本身就是回归防护（[14](./14-开发问题记录.md) 第 7 条） |
 | **连接串与开发配置一致** | `BlogApiFactory.ResolveDevelopmentConnectionString()` 会**读取 `appsettings.Development.json`** 拿主机/端口/用户名/密码（→ `localhost:5432`，`kky` / `123456`），只替换库名 | **CI 里的 PG 必须用这套凭证** |
 | Redis | 开发配置里 `Cache:Provider = "Redis"`。缓存会降级，但**限流桶存在 Redis 里**（[09](./09-已知限制与技术债.md) §5.7） | 建议起一个 redis 容器 |
 
