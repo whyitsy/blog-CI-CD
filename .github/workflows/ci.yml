@@ -324,7 +324,7 @@ jobs:
       # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
       - name: 上传测试报告与覆盖率
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
           path: '**/TestResults/**'
