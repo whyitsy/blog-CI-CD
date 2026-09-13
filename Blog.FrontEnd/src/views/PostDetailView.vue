@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { getPostDetail } from '@/api/posts'
 import { isNotFoundError } from '@/api/http'
+import { renderMarkdown } from '@/utils/markdown'
 import type { PostDetailDto } from '@/types'
 import GiscusComments from '@/components/common/GiscusComments.vue'
 import PostDetailSkeleton from '@/components/skeleton/PostDetailSkeleton.vue'
@@ -24,11 +23,9 @@ const toc = ref<TocItem[]>([])
 const activeHeading = ref('')
 const readProgress = ref(0)
 
-const renderedContent = computed(() => {
-  if (!post.value) return ''
-  const raw = marked.parse(post.value.content, { async: false }) as string
-  return DOMPurify.sanitize(raw, { ADD_ATTR: ['id'] })
-})
+const renderedContent = computed(() =>
+  post.value ? renderMarkdown(post.value.content) : '',
+)
 
 async function load(id: string) {
   loading.value = true
