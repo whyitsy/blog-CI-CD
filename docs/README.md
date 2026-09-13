@@ -163,7 +163,7 @@
 | 数据库 | PostgreSQL 18.6 + **zhparser**（中文全文检索） |
 | 缓存/限流 | Redis（可降级内存）· 令牌桶 |
 | 认证 | JWT（仅 Access Token）· PBKDF2 · 双档角色 |
-| 规模 | 后端 47 个端点 + `/health` / 10 张表；前端 23 个页面组件 / 3 套布局；测试 193 项 |
+| 规模 | 后端 47 个端点 + `/health` / 10 张表；前端 23 个页面组件 / 3 套布局；测试 195 项 |
 | 默认管理员 | `admin@example.com` / `Admin@12345`（**仅开发用**） |
 | 后端地址 | `http://localhost:5131`（健康检查 `GET /health`） |
 | 前端地址 | `http://localhost:5173` |
