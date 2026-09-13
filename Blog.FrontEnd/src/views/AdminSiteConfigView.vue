@@ -377,9 +377,11 @@ onMounted(load)
               <SocialIcon v-if="row.icon" :icon="row.icon" :name="row.name" />
               <span v-else class="icon-empty">?</span>
             </span>
-            <input v-model="row.name" class="input" placeholder="GitHub" />
-            <input v-model="row.icon" class="input" placeholder="github" />
-            <input v-model="row.url" class="input" placeholder="https://..." />
+            <!-- maxlength 与后端 FieldLimits.SocialLinkName/Icon/Url 一致（50/50/500）：
+                 这三个框以前没有任何长度限制，超长时会一路穿到数据库 -->
+            <input v-model="row.name" class="input" maxlength="50" placeholder="GitHub" />
+            <input v-model="row.icon" class="input" maxlength="50" placeholder="github" />
+            <input v-model="row.url" class="input" maxlength="500" placeholder="https://..." />
             <label class="switch">
               <input v-model="row.isVisible" type="checkbox" />
               <span>{{ row.isVisible ? '显示' : '隐藏' }}</span>

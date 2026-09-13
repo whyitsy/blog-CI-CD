@@ -310,6 +310,10 @@ const canNext = computed(() => page.value < totalPages.value)
 
 .col-act {
   display: flex;
+  /* ⚠️ align-items 不能省：「编辑」是 <RouterLink>（<a>），「发布/下架」「删除」是
+     <button>。不设时 flex 默认 stretch，<a> 的文字贴顶、而浏览器会把 <button> 的
+     内容垂直居中 —— 于是三者在同一行里视觉错位。 */
+  align-items: center;
   gap: var(--space-3);
   justify-content: flex-end;
 }
@@ -317,6 +321,8 @@ const canNext = computed(() => page.value < totalPages.value)
   background: none;
   border: none;
   padding: 0;
+  /* 显式行高：<a> 与 <button> 的 UA 默认行高不同，不统一也会错位 */
+  line-height: 1.5;
   font-size: 13px;
   color: var(--brand-500);
   cursor: pointer;

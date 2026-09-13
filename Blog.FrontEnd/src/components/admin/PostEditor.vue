@@ -209,7 +209,17 @@ function submit() {
 
     <label class="field">
       <span class="field-label">摘要</span>
-      <textarea v-model="summary" rows="2" placeholder="可选：留空将自动取正文前 50 字" />
+      <!-- maxlength 与字数显示都是必须的：
+           以前这里是 rows="2" 且两者皆无，粘贴长文本时只露两行，
+           用户根本看不出真实长度，结果一路提交到数据库才报错（docs/14 第 5 条）。
+           上限 200 与后端 FieldLimits.PostSummary / Posts.Summary 列宽保持一致。 -->
+      <textarea
+        v-model="summary"
+        rows="3"
+        maxlength="200"
+        placeholder="可选：留空将自动取正文前 50 字"
+      />
+      <small class="hint">已填 {{ summary.length }} / 200 · 留空则自动取正文前 50 字</small>
     </label>
 
     <div class="field">
