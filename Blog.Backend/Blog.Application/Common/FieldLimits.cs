@@ -8,7 +8,7 @@ namespace Blog.Application.Common
     /// <para><b>为什么需要这个类</b></para>
     /// 长度限制天然存在于两层：数据库的 <c>HasMaxLength</c>（最终防线）与
     /// Application 层的显式校验（业务规则）。两者一旦不一致，用户就会撞上
-    /// 「本以为能存、结果 500」。本项目的真实事故（见 docs/14 第 5 条）：
+    /// 「本以为能存、结果 500」。本项目的真实事故（见 archive/问题排查记录.md §3）：
     /// <c>Posts.Summary</c> 是 <c>varchar(120)</c>，而 Application 层**根本没有校验摘要长度**，
     /// 前端也没有 <c>maxlength</c>，于是超出时直接抛 <c>DbUpdateException</c>，
     /// 用户看到的是「服务器内部错误」。

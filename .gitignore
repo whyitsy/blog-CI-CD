@@ -49,3 +49,11 @@ TODO.md
 优化的问题.txt
 简历
 backups/
+
+# SDD（subagent-driven-development）的临时工作区：ledger、brief、report
+# 它是流程脚手架，不是项目资产
+.superpowers/
+
+# 镜像包与备份产物：跑出来的，不该入库
+dist-images/
+backups/

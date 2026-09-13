@@ -5,7 +5,7 @@ import type { AuthUser, LoginResponse, UserRole } from '@/types'
 /**
  * token 与用户信息的持久化键。
  *
- * 存 localStorage 的权衡（见 docs/10-决策记录.md §2.5 坑 2）：
+ * 存 localStorage 的权衡（见 learn/01-后端知识地图.md §8.4）：
  *   - 优点：不会自动随请求发送，因此**不引入 CSRF 问题**
  *   - 缺点：JS 可读，一旦 XSS 即被窃取 → 用「短有效期(30min)」+ CSP 补偿
  * token 过期后 `restore()` 会清掉本地状态。
