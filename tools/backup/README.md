@@ -1,6 +1,6 @@
 # 备份与恢复
 
-> **为什么这些脚本在仓库里**：`docs/09` §6.4 的教训 ——「开发机上的文件不是项目资产」。
+> **为什么这些脚本在仓库里**：`docs/06-技术债与待办.md` §2 的教训 ——「开发机上的文件不是项目资产」。
 > 备份是**上线后唯一能救命**的东西，放在仓库外等于没有。
 
 ---
@@ -60,7 +60,7 @@ bash tools/backup/restore.sh backups/xxx.sql.gz my_check_db
 
 > ⚠️ **最后两项不能省，而且它比看上去更危险。**
 >
-> 本项目的全文检索依赖 PostgreSQL 的 `zhparser` 扩展与 `chinese` 检索配置（见 `docs/06` §8）。
+> 本项目的全文检索依赖 PostgreSQL 的 `zhparser` 扩展与 `chinese` 检索配置（见 `docs/02-架构与数据模型.md` §9）。
 > 实测（2026-09-14）确认：**它们确实在 `pg_dump` 的输出里** ——
 > dump 第 26 行是 `CREATE EXTENSION IF NOT EXISTS zhparser WITH SCHEMA public;`，
 > 第 40 行起是 `CREATE TEXT SEARCH CONFIGURATION public.chinese (…)`。
@@ -94,7 +94,7 @@ bash tools/backup/restore.sh backups/xxx.sql.gz my_check_db
 | 3 | 用还原库启动一次应用 | `ConnectionStrings__DefaultConnection` 指向 `_restore` 库，`/health` 返回 200 |
 | 4 | 打开一篇文章、搜一次中文关键词 | 正文与图片正常、搜索有结果 |
 | 5 | 清理：`DROP DATABASE "blog_stage2_restore";` | — |
-| 6 | 把本次演练的日期与结果记到 `docs/06` 的对应条目 | 有记录才算做过 |
+| 6 | 把本次演练的日期与结果记到 `docs/05-运维与部署手册.md` §8.9 的对应条目 | 有记录才算做过 |
 
 ---
 
@@ -118,5 +118,5 @@ bash tools/backup/restore.sh backups/xxx.sql.gz my_check_db
 | 内容 | 位置 |
 |---|---|
 | 部署与回滚 | `docs/05-运维与部署手册.md`（部署章） |
-| 数据库结构与 zhparser | `docs/06-数据库设计.md`、`docs/01` §6 |
+| 数据库结构与 zhparser | `docs/02-架构与数据模型.md` §6、`docs/01-快速开始.md` §5.4 |
 | 这条要求的来源（技术债条目） | `plan/2026-09-14-大整理与上线方案.md` §2.4 E |

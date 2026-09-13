@@ -53,7 +53,7 @@ async function preflight() {
   } catch (err) {
     problems.push(
       `连不上前端 ${config.baseUrl}（${err.message}）\n` +
-        `      → 在 Blog.FrontEnd 下起 dev server（见 docs/07 §4.3）\n` +
+        `      → 在 Blog.FrontEnd 下起 dev server（见 docs/05 §4.3）\n` +
         `      → 或把整栈容器跑起来后用 E2E_BASE_URL=http://localhost:8080 指过去`,
     )
   }

@@ -48,7 +48,7 @@ try
     // 前端拦截器按 {code,message} 处理，一旦某次请求在校验阶段就被拦下，
     // 它拿到的是 {title,errors} —— 用户看到的就是空白或 undefined。
     //
-    // 实测缺口（docs/14 / plan/2026-09-14-大整理与上线方案.md §2.4 A）：
+    // 实测缺口（docs/02-架构与数据模型.md §4.1 / plan/2026-09-14-大整理与上线方案.md §2.4 A）：
     //   GET /api/posts/search 不带 keyword
     //     → {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1",
     //        "title":"One or more validation errors occurred.", "status":400, ...}
@@ -139,7 +139,7 @@ try
             };
         });
 
-    // 授权策略：两档角色（见 docs/03-后端设计.md §5.4）
+    // 授权策略：两档角色（见 docs/02-架构与数据模型.md §10.1）
     builder.Services.AddAuthorization(options =>
     {
         options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>

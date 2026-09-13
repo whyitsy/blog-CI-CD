@@ -7,7 +7,7 @@ namespace Blog.Tests.Integration;
 /// 「字段长度」这一系列业务校验的**端点级**测试。
 ///
 /// <para><b>为什么需要这一组</b></para>
-/// 起因是一个真实缺陷（docs/14 第 5 条）：<c>Posts.Summary</c> 在库里是
+/// 起因是一个真实缺陷（archive/问题排查记录.md §3）：<c>Posts.Summary</c> 在库里是
 /// <c>varchar(120)</c>，但 Application 层**根本没有校验摘要长度**，前端也没有
 /// <c>maxlength</c>，于是超出后一路穿到数据库，抛 <c>DbUpdateException</c>，
 /// 用户看到的是「服务器内部错误」而不是「摘要太长了」。

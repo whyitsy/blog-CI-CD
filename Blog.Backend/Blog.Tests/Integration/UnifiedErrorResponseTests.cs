@@ -8,7 +8,7 @@ namespace Blog.Tests.Integration;
 /// 「统一响应体」的边界测试。
 ///
 /// <para><b>为什么需要这一组</b></para>
-/// docs/03 §2.1 与 docs/05 §2 都承诺「<b>所有</b>接口（含错误）返回 {code,message,data}」。
+/// docs/02 §4.1 与 docs/03 §1.1 都承诺「<b>所有</b>接口（含错误）返回 {code,message,data}」。
 /// 但 <c>[ApiController]</c> 的自动模型校验发生在 Action <b>之前</b>，
 /// 默认输出 RFC 7807 <c>ProblemDetails</c>（{type,title,status,errors,traceId}）——
 /// 于是同一个 API 并存两种错误结构。

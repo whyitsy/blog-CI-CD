@@ -7,7 +7,7 @@
    pwsh -File tools/e2e/start-chrome.ps1 -Headless:$false   # 有界面，便于人眼看
    pwsh -File tools/e2e/start-chrome.ps1 -Port 9333
 
- ⚠️ 这里有一个**关键**细节，也是 docs/07 §6.2 原来那条"必须先完全退出 Chrome"
+ ⚠️ 这里有一个**关键**细节，也是 docs/05 §6.2 原来那条"必须先完全退出 Chrome"
     警告的来源：
     
     Chrome 是**单例**的 —— 如果你直接跑 `chrome.exe --remote-debugging-port=9222`，

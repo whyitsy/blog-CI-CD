@@ -65,7 +65,7 @@ await main('02-auth-flow', async ({ page, run }) => {
   // ⚠️ 期望是 `/login`（统一登录页）而**不是** `/admin/login`：
   //    后台登录页后来并入了统一登录页，`/admin/login` 只作为旧链接转发存在
   //    （router/index.ts:43）。原脚本写的是 `/admin/login`，已经过期。
-  //    详见 01-route-guard 的说明与 docs/14 第 9 条。
+  //    详见 01-route-guard 的说明与 archive/问题排查记录.md §9。
   await page.eval('localStorage.clear()')
   await page.navigate('/admin')
   await page.settle(800)

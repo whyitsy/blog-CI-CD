@@ -14,7 +14,7 @@
 # 构建
 #   docker build -f deploy/postgres-zhparser.Dockerfile -t blog-postgres-zhparser:18 .
 #
-# 详见 docs/01-项目初始化与配置.md §6
+# 详见 docs/01-快速开始.md §5.4
 
 FROM postgres:18.6
 
@@ -67,7 +67,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------- 初始化脚本
 # 容器首次初始化数据目录时，postgres 官方镜像会执行 /docker-entrypoint-initdb.d 下的脚本。
 # 注意：该机制**只在数据目录为空时**生效；已有的库不会重跑，
-#       因此扩展与检索配置最终应以 EF 迁移为准（见 docs/06-数据库设计.md §8.3）。
+#       因此扩展与检索配置最终应以 EF 迁移为准（见 docs/02-架构与数据模型.md §9.4）。
 COPY deploy/postgres-init/ /docker-entrypoint-initdb.d/
 
 # 构建期只做静态自检（不启动数据库，避免在 build 阶段引入不可靠的状态）。
