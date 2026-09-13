@@ -306,7 +306,7 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | `title` | string | ✅ | ≤200 字符 |
 | `content` | string | ✅ | Markdown |
 | `summary` | string? | — | **留空则自动取正文前 50 字**；填写则以填写内容为准 |
-| `coverImage` | string? | — | |
+| `coverImage` | string? | — | 只接受 `/api/files/...` 或空串，见 §4.6.1 |
 | `categoryId` | guid? | — | 分类不存在返回 404 |
 | `tagIds` | guid[]? | — | 存在非法 id 返回 4001 |
 | `collectionIds` | guid[]? | — | 所属专栏（可多个，多对多） |
@@ -314,6 +314,22 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | `publish` | bool | — | 默认 **`true`**（创建即发布） |
 
 响应 `data`：`PostDetailDto`
+
+#### 4.6.1 `coverImage` 的媒体白名单（2026-09-13 起）
+
+`coverImage` 会被直接放进 `<img src>`，因此**只接受两种取值**：
+
+| 取值 | 结果 |
+|---|---|
+| `null` / `""` / 空白 | ✅ 归一化为空串（不设置封面，卡片用内置渐变占位） |
+| `/api/files/2026/09/xxx.webp` | ✅ 本站上传的地址 |
+| `https://evil.com/x.png`、`//evil.com/x.png` | ❌ 400 / 4001（外链：访客 IP 泄露、混合内容告警） |
+| `javascript:alert(1)`、`data:image/svg+xml;…` | ❌ 400 / 4001（危险 scheme） |
+| `/api/files/../../etc/passwd`、`/api/files//evil.com/x` | ❌ 400 / 4001（穿越 / 归一化歧义） |
+
+实现见 `Blog.Application/Common/MediaPath.cs`（白名单，非黑名单），
+由 `PostService.CreateAsync` / `UpdateAsync` 调用；作者头像、站点 Logo、
+首屏背景图共用同一套规则。
 
 ### 4.7 `PUT /api/posts/{id}` — 更新
 
@@ -326,7 +342,7 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | `title` | string | ✅ | |
 | `content` | string | ✅ | |
 | `summary` | string? | — | 规则同创建 |
-| `coverImage` | string? | — | |
+| `coverImage` | string? | — | 只接受 `/api/files/...` 或空串，见 §4.6.1 |
 | `categoryId` | guid? | — | |
 | `tagIds` | guid[]? | — | |
 | `collectionIds` | guid[]? | — | |
@@ -421,6 +437,14 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 ```json
 { "name": "...", "email": "...", "bio": "...", "avatar": "...", "version": 1 }
 ```
+
+> ⚠️ **`avatar` 只接受本站上传的地址**（`/api/files/...`）或空串。
+> 传外部 URL、`//host/x.png`、`javascript:`、`data:`、含 `..` 的路径一律
+> **400 / code 4001**。字段中文名为「头像」。
+>
+> 这条校验**必须在服务端**：前端已经把头像输入框改成「只能上传」，
+> 但那只是 UI 约束，`curl` 直打接口依然会经过这条白名单。
+> 完整规则见 §9.2「媒体白名单校验」。
 
 > 注意：这是**署名信息**的更新，`email` 是展示用联系方式，
 > **不是登录邮箱**（登录邮箱在 `/api/users` 改）。
@@ -581,12 +605,19 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `siteName` | string | 站点名 |
+| `logoName` | string | Logo 圆点里的文字（缺省 `"k"`），与 `siteName` **分开配置** |
+| `siteLogo` | string? | 自定义 Logo 图片地址；`null` 表示未设置，前端回退到「渐变圆点 + `logoName`」 |
 | `heroSubtitles` | string[] | 打字机文案列表 |
-| `heroBackground` | string? | Hero 背景图 URL |
+| `heroBackgrounds` | string[] | 首屏背景图列表（多张，前端每次随机展示一张）；空数组表示用内置渐变 |
 | `foundingDate` | string? | 建站日期 |
 | `versions` | `Record<string, number>` | **各配置项当前的版本号**（`Key -> Version`） |
 
 > `versions` 里**缺失的 Key** 表示该配置项尚未创建，保存时版本号传 `0`。
+> `versions` 的 Key **保留原始大小写**（`"SiteName"` 而不是 `"siteName"`），前端按常量精确取值。
+
+> ⚠️ **`heroBackground`（单数，string）已在 2026-09-13 改为 `heroBackgrounds`（复数，string[]）。**
+> **Key 名仍叫 `HeroBackground`**（避免多一个配置行的版本号迁移），只是它的 Value 从
+> 「一个裸 URL」升级成「JSON 数组」。读取侧对历史裸地址保持兼容，见 §9.2。
 
 ### 9.2 `PUT /api/site/config` — 逐项更新
 
@@ -598,12 +629,22 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 
 **语义**：只更新**一个** Key，不是整体替换。
 
-| Key | 值格式 |
-|---|---|
-| `SiteName` | 字符串 |
-| `HeroSubtitles` | **JSON 数组字符串**，如 `["a","b"]` |
-| `FoundingDate` | `yyyy-MM-dd` |
-| `HeroBackground` | URL |
+| Key | 值格式 | 服务端校验 |
+|---|---|---|
+| `SiteName` | 字符串 | — |
+| `LogoName` | 字符串（建议 1~2 字符） | — |
+| `SiteLogo` | `/api/files/...` 相对地址，或空串 | **媒体白名单**，见下 |
+| `HeroSubtitles` | **JSON 数组字符串**，如 `["a","b"]` | — |
+| `FoundingDate` | `yyyy-MM-dd` | — |
+| `HeroBackground` | **JSON 数组字符串**，如 `["/api/files/a.webp"]` | **媒体白名单**，逐项校验 + 最多 20 张 |
+
+**媒体白名单校验**（`SiteLogo` / `HeroBackground`，与作者头像、文章封面同一条规则）：
+
+- 合法取值只有两种：**空**（表示未设置）、或以 `/api/files/` 开头的本站路径
+- 拒绝：`https://…`、`//…`、`javascript:`、`data:`、`..`、`//`、`%`、`?`、`#`、`\`、目录结尾等
+- 失败一律返回 **HTTP 400 / code 4001**，提示形如
+  `站点 Logo：只允许使用本站上传的图片（地址须以 /api/files/ 开头），不支持填写外部链接`
+- `HeroBackground` 的数组**任意一项不合法就整批拒绝**；JSON 格式损坏也报 4001（**不会**静默存成空数组）
 
 写入语义遵循 §2.3 的统一规则：Key 不存在 = 新增（忽略 version），
 已存在 = 乐观锁（`version` 必须 ≥ 1，否则 4001）。

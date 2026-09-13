@@ -7,8 +7,10 @@ namespace Blog.Application.Services.Site
     /// </summary>
     public record SiteConfigDto(
         string SiteName,
+        string LogoName,
+        string? SiteLogo,
         List<string> HeroSubtitles,
-        string? HeroBackground,
+        List<string> HeroBackgrounds,
         DateTimeOffset? FoundingDate,
         Dictionary<string, int> Versions
     );

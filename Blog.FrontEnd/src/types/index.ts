@@ -79,6 +79,8 @@ export interface ArchiveGroupDto {
 /** 站点配置的 Key 常量，与后端 SiteConfigKeys 对齐 */
 export const SiteConfigKey = {
   SiteName: 'SiteName',
+  LogoName: 'LogoName',
+  SiteLogo: 'SiteLogo',
   HeroSubtitles: 'HeroSubtitles',
   FoundingDate: 'FoundingDate',
   HeroBackground: 'HeroBackground',
@@ -88,8 +90,16 @@ export type SiteConfigKeyValue = (typeof SiteConfigKey)[keyof typeof SiteConfigK
 
 export interface SiteConfigDto {
   siteName: string
+  /** 导航栏 Logo 圆点里的文字（1~2 字符），与 siteName 分开配置；缺省 "k" */
+  logoName: string
+  /** 自定义 Logo 图片地址（仅本站上传）；为空表示未设置，回退到「渐变圆点 + logoName」 */
+  siteLogo: string | null
   heroSubtitles: string[]
-  heroBackground: string | null
+  /**
+   * 首屏背景图（多张）。每次进入首屏随机展示一张；为空则使用内置渐变背景。
+   * 后端 Value 存 JSON 数组（Key 名保持单数是为了不动已有的配置行）。
+   */
+  heroBackgrounds: string[]
   foundingDate: string | null
   /** 各配置项当前的乐观锁版本号（Key -> Version）；缺失的 Key 表示尚未创建，保存时版本号传 0 */
   versions: Record<string, number>

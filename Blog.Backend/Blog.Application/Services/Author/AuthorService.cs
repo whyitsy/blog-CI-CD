@@ -39,7 +39,8 @@ namespace Blog.Application.Services.Author
             var author = new AuthorEntity(
                 request.Name.Trim(),
                 request.Email.Trim(),
-                (request.Avatar ?? string.Empty).Trim(),
+                // 头像只接受本站上传的地址：隐藏前端输入框挡不住 curl，必须在服务端拦
+                MediaPath.Validate(request.Avatar, "头像"),
                 (request.Bio ?? string.Empty).Trim());
 
             await _authors.AddAsync(author, cancellationToken);
@@ -81,7 +82,11 @@ namespace Blog.Application.Services.Author
             // 乐观锁：UPDATE ... WHERE "Version" = @expected
             _authors.ApplyOptimisticVersion(author, request.Version);
 
-            author.Update(request.Name.Trim(), request.Email.Trim(), request.Avatar ?? string.Empty, request.Bio ?? string.Empty);
+            author.Update(
+                request.Name.Trim(),
+                request.Email.Trim(),
+                MediaPath.Validate(request.Avatar, "头像"),
+                request.Bio ?? string.Empty);
             await _uow.SaveChangesAsync(cancellationToken);
 
             // 文章详情（缓存中含作者名/头像）与站点统计需要重新生成

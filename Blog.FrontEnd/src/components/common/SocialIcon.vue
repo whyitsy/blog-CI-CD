@@ -1,5 +1,8 @@
 <script setup lang="ts">
-defineProps<{ icon: string; name: string }>()
+/** size 为边长（px）。首屏的社交入口用更大的 26，管理端配置页的预览保持默认 20 */
+withDefaults(defineProps<{ icon: string; name: string; size?: number }>(), {
+  size: 20,
+})
 
 // 常用社交图标（simple-icons 风格 path）
 const paths: Record<string, string> = {
@@ -14,7 +17,7 @@ const paths: Record<string, string> = {
 </script>
 
 <template>
-  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" :aria-label="name" role="img">
+  <svg viewBox="0 0 24 24" :width="size" :height="size" fill="currentColor" :aria-label="name" role="img">
     <path :d="paths[icon.toLowerCase()] ?? paths.rss" />
   </svg>
 </template>

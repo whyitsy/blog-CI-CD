@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { login } from '@/api/auth'
 import { ApiError, ErrorCode } from '@/api/http'
+import SiteLogo from '@/components/common/SiteLogo.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -59,7 +60,7 @@ async function onSubmit() {
 
     <form class="auth-card card" @submit.prevent="onSubmit">
       <header class="auth-head">
-        <span class="logo-dot">k</span>
+        <SiteLogo :size="40" />
         <h1>{{ title }}</h1>
         <p>{{ subtitle }}</p>
       </header>
@@ -145,19 +146,6 @@ async function onSubmit() {
   gap: var(--space-2);
   text-align: center;
   margin-bottom: var(--space-2);
-}
-
-.logo-dot {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-  box-shadow: var(--glow-purple);
 }
 
 .auth-head h1 {

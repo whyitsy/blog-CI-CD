@@ -1,14 +1,41 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useSiteStore } from '@/stores/site'
 import SocialIcon from '@/components/common/SocialIcon.vue'
-import heroBg from '@/assets/hero.webp'
 
 const site = useSiteStore()
 
 const subtitles = computed(() => site.config?.heroSubtitles ?? [])
-const background = computed(() => site.config?.heroBackground || heroBg)
+const backgrounds = computed(() => site.config?.heroBackgrounds ?? [])
 const visibleLinks = computed(() => site.socialLinks.filter((l) => l.isVisible))
+
+/**
+ * 首屏背景：从后台配置的多张图里**随机挑一张**。
+ *
+ * 两个细节：
+ *   · 用 watch + immediate 而不是 onMounted —— 站点配置是异步拉的，
+ *     HeroSection 挂载时 config 往往还是 null，写死在 mounted 里会永远选不到图。
+ *   · 只在「当前这张不在新列表里」时才重新抽 —— 否则 site.refreshAll() 之类的
+ *     刷新会把访客正在看的背景换掉。
+ *
+ * 列表为空（后台没配置）时 pickedBackground 为空串，模板会直接不渲染 .hero-bg，
+ * 只留 .aurora-blobs 的内置渐变。
+ */
+const pickedBackground = ref('')
+
+watch(
+  backgrounds,
+  (list) => {
+    if (!list.length) {
+      pickedBackground.value = ''
+      return
+    }
+    if (!list.includes(pickedBackground.value)) {
+      pickedBackground.value = list[Math.floor(Math.random() * list.length)]
+    }
+  },
+  { immediate: true },
+)
 
 function scrollToList() {
   document.getElementById('post-list')?.scrollIntoView({ behavior: 'smooth' })
@@ -17,9 +44,9 @@ function scrollToList() {
 
 <template>
   <section class="hero">
-    <!-- 全屏背景图 + 极光遮罩 -->
-    <div class="hero-bg" :style="{ backgroundImage: `url(${background})` }" />
-    <div class="hero-mask" />
+    <!-- 配置了背景图才渲染图片层与遮罩；没配置时只显示内置渐变（兑现配置页的说明） -->
+    <div v-if="pickedBackground" class="hero-bg" :style="{ backgroundImage: `url(${pickedBackground})` }" />
+    <div v-if="pickedBackground" class="hero-mask" />
     <div class="aurora-blobs" />
 
     <div class="hero-content">
@@ -31,24 +58,20 @@ function scrollToList() {
         <span class="tw-cursor">|</span>
       </p>
 
-      <button class="scroll-down" aria-label="向下翻阅文章" @click="scrollToList">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <!-- 有可见文字就不再需要 aria-label：否则读屏会把同一句话念两遍 -->
+      <button class="scroll-down" @click="scrollToList">
+        <span>向下翻阅文章</span>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
         </svg>
       </button>
     </div>
 
     <div v-if="visibleLinks.length" class="hero-socials">
-      <a
-        v-for="link in visibleLinks"
-        :key="link.id"
-        :href="link.url"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="social-link"
-        :title="link.name"
-      >
-        <SocialIcon :icon="link.icon" :name="link.name" />
+      <a v-for="link in visibleLinks" :key="link.id" :href="link.url" target="_blank" rel="noopener noreferrer"
+        class="social-link" :title="link.name">
+        <SocialIcon :icon="link.icon" :name="link.name" :size="26" />
       </a>
     </div>
   </section>
@@ -122,17 +145,21 @@ function scrollToList() {
   animation: blink 1s step-end infinite;
 }
 
-/* 向下按钮：较大幅度浮动 + 透明度呼吸 */
+/* 向下按钮：从纯图标圆形改为「图标 + 文案」胶囊，保留浮动呼吸动画。
+   边框与底色沿用此前手工调整过的值（3px / 浅灰半透明）。 */
 .scroll-down {
   margin-top: var(--space-16);
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: 1px solid var(--border-default);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-2xl);
+  border: 3px solid var(--border-default);
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-default);
-  background: rgba(27, 29, 36, 0.35);
+  background: rgba(208, 211, 224, 0.35);
   backdrop-filter: blur(6px);
   animation: float-btn 2.4s ease-in-out infinite;
   transition: border-color var(--transition-fast), color var(--transition-fast);
@@ -145,7 +172,7 @@ function scrollToList() {
 
 .hero-socials {
   position: absolute;
-  bottom: var(--space-10);
+  bottom: var(--space-16);
   left: 0;
   right: 0;
   z-index: 2;
@@ -157,8 +184,8 @@ function scrollToList() {
 .social-link {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: 1px solid var(--border-default);
   color: var(--text-muted);
@@ -179,6 +206,7 @@ function scrollToList() {
   100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-6px);
   }
@@ -190,6 +218,7 @@ function scrollToList() {
     transform: translateY(0);
     opacity: 1;
   }
+
   50% {
     transform: translateY(14px);
     opacity: 0.35;
@@ -201,6 +230,7 @@ function scrollToList() {
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0;
   }

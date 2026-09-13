@@ -148,7 +148,8 @@ namespace Blog.Application.Services.Post
                 request.Summary,
                 authorId,
                 request.CategoryId,
-                request.CoverImage ?? string.Empty,
+                // 封面只接受本站上传的地址（同头像，详见 MediaPath 的说明）
+                MediaPath.Validate(request.CoverImage, "封面"),
                 createdByUserId: _currentUser.UserId,
                 publishNow: request.Publish);
 
@@ -174,7 +175,12 @@ namespace Blog.Application.Services.Post
             // 乐观锁：以客户端版本号为基准，UPDATE ... WHERE "Version" = @expected
             _posts.ApplyOptimisticVersion(post, ValidateVersion(request.Version));
 
-            post.Update(request.Title, request.Content, request.Summary, request.CategoryId, request.CoverImage ?? string.Empty);
+            post.Update(
+                request.Title,
+                request.Content,
+                request.Summary,
+                request.CategoryId,
+                MediaPath.Validate(request.CoverImage, "封面"));
             await ApplyTagsAsync(post, request.TagIds, cancellationToken);
             await ApplyCollectionsAsync(post, request.CollectionIds, cancellationToken);
 

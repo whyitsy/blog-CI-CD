@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { createCategory, getCategories } from '@/api/categories'
 import { createTag, getTags } from '@/api/tags'
 import { getCollections } from '@/api/collections'
+import { uploadFile } from '@/api/files'
 import { useAuthStore } from '@/stores/auth'
 import type { CategoryDto, CollectionDto, PostDetailDto, PostPayload, TagDto } from '@/types'
 
@@ -25,6 +26,7 @@ const title = ref('')
 const summary = ref('')
 const content = ref('')
 const coverImage = ref('')
+const uploadingCover = ref(false)
 const categoryId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
 const selectedCollectionIds = ref<string[]>([])
@@ -98,6 +100,32 @@ const titleError = computed(() => {
 })
 const contentError = computed(() => (content.value.trim() ? '' : '内容不能为空'))
 const formValid = computed(() => !titleError.value && !contentError.value)
+
+/**
+ * 封面上传。刻意**不提供 URL 输入框**：封面地址会被直接放进 <img src>，
+ * 允许手填就等于允许外部链接（访客 IP 泄露）与 javascript: / data: 之类的注入。
+ * 服务端对 coverImage 也做 MediaPath 白名单校验，两层一致。
+ */
+async function onPickCover(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    inlineError.value = '请选择图片文件'
+    input.value = ''
+    return
+  }
+  uploadingCover.value = true
+  inlineError.value = ''
+  try {
+    coverImage.value = await uploadFile(file)
+  } catch (e) {
+    inlineError.value = e instanceof Error ? e.message : '封面上传失败'
+  } finally {
+    uploadingCover.value = false
+    input.value = ''
+  }
+}
 
 async function addCategory() {
   const name = newCategoryName.value.trim()
@@ -183,10 +211,33 @@ function submit() {
       <textarea v-model="summary" rows="2" placeholder="可选：留空将自动取正文前 50 字" />
     </label>
 
-    <label class="field">
-      <span class="field-label">封面 URL</span>
-      <input v-model="coverImage" type="text" placeholder="/media/xxx.png 或 https://..." />
-    </label>
+    <div class="field">
+      <span class="field-label">封面图</span>
+      <div class="cover-row">
+        <div class="cover-preview" :class="{ empty: !coverImage }">
+          <img v-if="coverImage" :src="coverImage" alt="封面预览" />
+          <span v-else>未设置</span>
+        </div>
+        <div class="cover-actions">
+          <div class="cover-buttons">
+            <label class="btn-mini">
+              {{ uploadingCover ? '上传中...' : coverImage ? '更换封面' : '上传封面' }}
+              <input type="file" accept="image/*" hidden :disabled="uploadingCover" @change="onPickCover" />
+            </label>
+            <button
+              v-if="coverImage"
+              type="button"
+              class="btn-mini ghost"
+              :disabled="uploadingCover"
+              @click="coverImage = ''"
+            >
+              移除封面
+            </button>
+          </div>
+          <small class="hint">封面只能上传设置；不设置时列表卡片使用内置渐变占位</small>
+        </div>
+      </div>
+    </div>
 
     <div class="row">
       <label class="field">
@@ -267,7 +318,7 @@ function submit() {
 
     <footer class="pe-actions">
       <button type="button" class="btn-ghost" :disabled="saving" @click="emit('cancel')">取消</button>
-      <button type="submit" class="btn-primary" :disabled="!formValid || saving">
+      <button type="submit" class="btn-primary" :disabled="!formValid || saving || uploadingCover">
         {{ saving ? '保存中...' : mode === 'create' ? '创建' : '保存修改' }}
       </button>
     </footer>
@@ -363,6 +414,10 @@ function submit() {
   white-space: nowrap;
 }
 .btn-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);
@@ -371,6 +426,51 @@ function submit() {
   cursor: pointer;
 }
 .btn-mini:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-mini.ghost {
+  background: transparent;
+  color: #e35151;
+  border-color: color-mix(in srgb, #e35151 40%, transparent);
+}
+
+/* 封面：上传 + 预览。刻意不提供 URL 输入框，理由见 onPickCover 的注释 */
+.cover-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.cover-preview {
+  width: 160px;
+  height: 90px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  font: var(--text-caption);
+  color: var(--text-subtle);
+}
+.cover-preview.empty {
+  border-style: dashed;
+}
+.cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cover-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 
 .tag-pool {
   display: flex;

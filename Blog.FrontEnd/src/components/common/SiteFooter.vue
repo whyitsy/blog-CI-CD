@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSiteStore } from '@/stores/site'
+import SiteLogo from '@/components/common/SiteLogo.vue'
 
 const site = useSiteStore()
 
@@ -31,7 +32,8 @@ function formatViews(n: number) {
     <div class="container footer-inner">
       <div class="footer-brand">
         <div class="footer-logo">
-          <span class="logo-dot">k</span>
+          <!-- 页脚原来没有发光效果，用 glow=false 保持原样 -->
+          <SiteLogo :size="28" :glow="false" />
           <span class="site-name">{{ site.config?.siteName ?? "kky's blog" }}</span>
         </div>
         <p class="copyright">© {{ year }} kky · 记录代码与生活</p>
@@ -75,18 +77,6 @@ function formatViews(n: number) {
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-2);
-}
-
-.logo-dot {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
 }
 
 .site-name {
