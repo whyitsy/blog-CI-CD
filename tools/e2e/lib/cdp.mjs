@@ -355,6 +355,66 @@ export function setRunDir(name) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 页面内的 fetch + **结构化结果**。
+ *
+ * ⚠️ 这个函数存在的唯一理由：**让失败信息指向正确的地方。**
+ *
+ *    直接写 `const b = await r.json()` 的后果是：后端没起来时（Vite 代理返回 502 + HTML），
+ *    抛出来的是
+ *
+ *        SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input
+ *
+ *    这句话读起来像"响应格式不对"，**而不是"后端没在跑"** —— 它会把排查方向带偏。
+ *    （这个坑在本项目里真的发生过两次：一次是登录端点改名，一次是后端没启动，
+ *      两次的表现都是这句 JSON 解析错误。）
+ *
+ *    所以这里把三种情况分开：
+ *      · transport —— fetch 本身就失败了（DNS/连接被拒/超时）
+ *      · non-json  —— 拿到了响应，但**不是 JSON**（502/504 的 HTML 错误页属于这种）
+ *      · json      —— 真正的业务响应
+ */
+function pageFetchScript(method, path, payload) {
+  const hasPayload = payload !== undefined
+  return `(async () => {
+    const auth = { 'Authorization': 'Bearer ' + (localStorage.getItem(${JSON.stringify(config.storageKeys.token)}) || '') };
+    const init = {
+      method: ${JSON.stringify(method)},
+      // 只在真的有 body 时才带 Content-Type —— GET 没有 body，塞上它是多余的
+      headers: ${hasPayload ? "{ 'Content-Type': 'application/json', ...auth }" : 'auth'}
+    };
+    ${hasPayload ? `init.body = ${JSON.stringify(JSON.stringify(payload))};` : ''}
+    let r;
+    try {
+      r = await fetch(${JSON.stringify(path)}, init);
+    } catch (e) {
+      return { kind: 'transport', detail: String((e && e.message) || e) };
+    }
+    const text = await r.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { /* 保持 null，下面按 non-json 处理 */ }
+    if (body === null) {
+      return { kind: 'non-json', httpStatus: r.status, detail: text.slice(0, 160) || '(空响应体)' };
+    }
+    return { kind: 'json', httpStatus: r.status, body };
+  })()`
+}
+
+/** 把 transport / non-json 两种失败翻译成**能直接指导下一步**的报错 */
+function describeFetchFailure(what, res) {
+  if (res?.kind === 'transport') {
+    return new Error(`${what}：连不上（${res.detail}）。检查前端 dev server 是否在跑。`)
+  }
+  if (res?.kind === 'non-json') {
+    return new Error(
+      `${what}：服务端返回的不是 JSON（HTTP ${res.httpStatus}）—— **后端或反向代理很可能没有在运行**。\n` +
+        `        响应片段：${res.detail.replace(/\s+/g, ' ')}\n` +
+        `        → 后端应在 5131 上（docs/05 §5.1）；run.mjs 的 preflight 告警指的是同一件事。`,
+    )
+  }
+  return null
+}
+
+/**
  * 通过接口拿 token 并写进 localStorage —— 比"在登录页填表单"稳定得多，
  * 而且它同时验证了「凭据有效」这件事。
  * 之后必须 `navigate` 一次（整页加载），Vue 的 auth store 才会重新读到 token。
@@ -362,20 +422,29 @@ export function setRunDir(name) {
 export async function login(page, account) {
   await page.navigate('/login', { ready: 'document.readyState === "complete"' })
   await page.eval('localStorage.clear()')
-  const res = await page.eval(`(async () => {
-    const r = await fetch(${JSON.stringify(config.loginPath)}, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: ${JSON.stringify(account.email)}, password: ${JSON.stringify(account.password)} })
-    });
-    const b = await r.json();
-    if (b.code !== 0) return { ok: false, code: b.code, message: b.message };
-    localStorage.setItem(${JSON.stringify(config.storageKeys.token)}, b.data.token);
-    localStorage.setItem(${JSON.stringify(config.storageKeys.user)}, JSON.stringify(b.data.user));
-    localStorage.setItem(${JSON.stringify(config.storageKeys.expires)}, b.data.expiresAt);
-    return { ok: true, role: b.data.role, userId: b.data.user?.id };
+  const res = await page.eval(pageFetchScript('POST', config.loginPath, {
+    email: account.email,
+    password: account.password,
+  }))
+
+  // 环境类失败优先报出来 —— 别让它伪装成"凭据错误"
+  const envError = describeFetchFailure(`登录（${account.email}）`, res)
+  if (envError) throw envError
+
+  if (res.body.code !== 0) {
+    throw new Error(`登录失败：${account.email} -> code=${res.body.code} ${res.body.message ?? ''}`)
+  }
+
+  // 只把 data 这一小段注入页面（而不是把整个响应体塞进去）
+  await page.eval(`(() => {
+    const d = ${JSON.stringify(res.body.data)};
+    localStorage.setItem(${JSON.stringify(config.storageKeys.token)}, d.token);
+    localStorage.setItem(${JSON.stringify(config.storageKeys.user)}, JSON.stringify(d.user));
+    localStorage.setItem(${JSON.stringify(config.storageKeys.expires)}, d.expiresAt);
+    return true;
   })()`)
-  if (!res?.ok) throw new Error(`登录失败：${account.email} -> code=${res?.code} ${res?.message ?? ''}`)
-  return res
+
+  return { ok: true, role: res.body.data.role, userId: res.body.data.user?.id }
 }
 
 /** 登录后直接整页导航到目标路径 */
@@ -384,29 +453,23 @@ export async function loginAndGo(page, account, path, opts) {
   return page.navigate(path, opts)
 }
 
-/** 用当前 localStorage 里的 token 打一个 GET 接口（同源，因此不会有 CORS 问题） */
+/**
+ * 用当前 localStorage 里的 token 打一个 GET 接口（同源，因此不会有 CORS 问题）。
+ *
+ * 返回形状保持 `{ status, body }`；后端不可用时额外带上
+ * `nonJson: true` / `detail`，**而不是抛一个误导人的 JSON 解析错误**。
+ */
 export async function apiGet(page, path) {
-  return page.eval(`(async () => {
-    const r = await fetch(${JSON.stringify(path)}, {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem(${JSON.stringify(config.storageKeys.token)}) }
-    });
-    return { status: r.status, body: await r.json() };
-  })()`)
+  const res = await page.eval(pageFetchScript('GET', path))
+  if (res?.kind === 'json') return { status: res.httpStatus, body: res.body }
+  return { status: res?.httpStatus ?? 0, body: null, nonJson: true, detail: res?.detail }
 }
 
 /** 用当前 token 发一个带 JSON body 的请求 */
 export async function apiSend(page, method, path, payload) {
-  return page.eval(`(async () => {
-    const r = await fetch(${JSON.stringify(path)}, {
-      method: ${JSON.stringify(method)},
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem(${JSON.stringify(config.storageKeys.token)})
-      },
-      body: ${JSON.stringify(JSON.stringify(payload ?? null))}
-    });
-    return { status: r.status, body: await r.json().catch(() => null) };
-  })()`)
+  const res = await page.eval(pageFetchScript(method, path, payload ?? null))
+  if (res?.kind === 'json') return { status: res.httpStatus, body: res.body }
+  return { status: res?.httpStatus ?? 0, body: null, nonJson: true, detail: res?.detail }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
