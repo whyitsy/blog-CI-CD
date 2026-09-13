@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 把 docs/05 §7.2 的"人肉纪律"变成机器强制。
       # 仓库历史上真发生过「39 个文件仅因 CRLF/LF 差异被整体纳入提交」。
@@ -76,9 +76,9 @@ jobs:
       run:
         working-directory: Blog.FrontEnd
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           # 内置缓存：按 package-lock.json 的哈希做缓存键
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -324,7 +324,7 @@ jobs:
       # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
       - name: 上传测试报告与覆盖率
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
           path: '**/TestResults/**'
@@ -363,7 +363,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
