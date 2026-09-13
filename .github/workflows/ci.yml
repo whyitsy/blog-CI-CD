@@ -8,7 +8,7 @@
 # 四个作业互不依赖，**并行**运行：
 #   hygiene   行尾检查（最快，秒级失败）
 #   frontend  类型检查 + 构建
-#   backend   编译 + 195 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
+#   backend   格式检查 + 编译 + 198 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
 #   security  依赖漏洞扫描（NuGet + npm，**只报告不阻断**）
 #
 # 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md
@@ -184,10 +184,30 @@ jobs:
       - name: 还原依赖
         run: dotnet restore Blog.Backend/Blog.Backend.slnx
 
+      # 缺口 G6：没有 lint / 格式门禁。
+      #
+      # ⚠️ 只查 whitespace，不查 analyzer：
+      #    实测 `dotnet format --severity info` 在本仓库报 21 条 analyzer 建议
+      #    （CA2016 / CA1873 / CA1816 / CA1861 / SYSLIB1045 / ASP0025）。
+      #    一次性把它们变成门禁 = 21 处改动 + 长期噪音，属于过度工程化。
+      #
+      # ⚠️ 覆盖范围由仓库根的 .editorconfig 决定，其中 end_of_line = lf 是关键：
+      #    dotnet format 在缺少该文件时的默认行尾是 CRLF，
+      #    会与 .gitattributes 冲突并让上面的行尾检查变红。
+      #
+      # 放在这里而不是 hygiene 作业：那个作业刻意不装 .NET SDK（5 秒跑完），
+      # 装 SDK + restore 会让它从"最快失败"变成最慢之一。
+      # 这里紧跟 restore，复用还原结果，且仍**早于**编译与测试 —— 失败依然快。
+      - name: 检查 C# 格式（.editorconfig）
+        run: |
+          dotnet format Blog.Backend/Blog.Backend.slnx whitespace --verify-no-changes --no-restore \
+            || { echo "::error::C# 格式不符合 .editorconfig。本地执行：dotnet format Blog.Backend/Blog.Backend.slnx whitespace"; exit 1; }
+          echo "OK：C# 格式符合 .editorconfig"
+
       - name: 编译（Release）
         run: dotnet build Blog.Backend/Blog.Backend.slnx --no-restore --configuration Release
 
-      # 跑全部 195 项（79 集成 + 116 单元）。
+      # 跑全部 198 项（79 集成 + 116 单元 + 3 统一响应体契约）。
       #
       # 覆盖率**只产出报告、不设阈值**：一开始就卡阈值会逼人写垃圾测试来凑数（docs/11 §9.2）。
       #

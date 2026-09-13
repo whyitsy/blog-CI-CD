@@ -10,6 +10,7 @@ using Blog.Infrastructure.Security;
 using Blog.WebApi.HealthChecks;
 using Blog.WebApi.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -37,6 +38,42 @@ try
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}"));
 
     builder.Services.AddControllers();
+
+    // ---------------------------------------------------------------- 统一错误响应
+    // [ApiController] 会在 Action 执行**之前**做模型校验，失败时直接短路返回 400。
+    // 它默认输出 RFC 7807 ProblemDetails（{type,title,status,errors,traceId}），
+    // 与项目对外承诺的 {code,message,data} 是**两套结构**。
+    //
+    // 后果不是"不好看"，而是调用方必须写两套解析逻辑：
+    // 前端拦截器按 {code,message} 处理，一旦某次请求在校验阶段就被拦下，
+    // 它拿到的是 {title,errors} —— 用户看到的就是空白或 undefined。
+    //
+    // 实测缺口（docs/14 / plan/2026-09-14-大整理与上线方案.md §2.4 A）：
+    //   GET /api/posts/search 不带 keyword
+    //     → {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1",
+    //        "title":"One or more validation errors occurred.", "status":400, ...}
+    //
+    // 这里接管这个工厂，让"统一响应体"从**多数情况成立**变成**无条件成立**。
+    builder.Services.Configure<ApiBehaviorOptions>(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var firstError = context.ModelState
+                .FirstOrDefault(entry => entry.Value?.Errors.Count > 0);
+
+            // 字段名为 "" 或 "$" 表示错误落在整个请求体上（如 JSON 格式不合法），
+            // 这时说「参数 X 不合法」会误导 —— 请求里根本没有这个参数。
+            var message = firstError.Key switch
+            {
+                null or "" or "$" => "请求体格式不正确",
+                var field => $"参数「{field}」不合法或缺失",
+            };
+
+            return new BadRequestObjectResult(
+                ApiResponse.Fail(ErrorCodes.InvalidArgument, message));
+        };
+    });
+
     builder.Services.AddOpenApi();
 
     // ---------------------------------------------------------------- 认证（JWT）

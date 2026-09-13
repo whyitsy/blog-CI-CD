@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Blog.Tests.Infrastructure;
 
 namespace Blog.Tests.Integration;

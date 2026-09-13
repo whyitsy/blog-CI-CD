@@ -1,4 +1,4 @@
-﻿namespace Blog.Application.Services.Post
+namespace Blog.Application.Services.Post
 {
     public record TagBriefDto(Guid Id, string Name);
 
