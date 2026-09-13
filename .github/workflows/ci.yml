@@ -8,7 +8,7 @@
 # 四个作业互不依赖，**并行**运行：
 #   hygiene   行尾检查（最快，秒级失败）
 #   frontend  类型检查 + 构建
-#   backend   编译 + 195 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
+#   backend   格式检查 + 编译 + 198 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
 #   security  依赖漏洞扫描（NuGet + npm，**只报告不阻断**）
 #
 # 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md
