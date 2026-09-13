@@ -810,6 +810,22 @@ HTTP 状态码**同时**被设置成语义正确的值（401/403/404/409/429）�
 - 框架层上限：`[RequestSizeLimit(50MB)]`
 - 业务层上限：`FileStorage:MaxFileSize`（默认 10MB），超出返回 4001
 
+**允许的扩展名**（`LocalFileStorageService.AllowedExtensions`）：
+
+| 类别 | 扩展名 |
+|---|---|
+| 图片 | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.ico` |
+| 其他 | `.mp4` `.webm` `.pdf` `.zip` |
+
+> ⚠️ **`.svg` 被刻意排除**（2026-09-13，缺口 G11）。SVG 可以内嵌 `<script>`，
+> 而本站文件接口是**同源内联**下发的 —— 直接打开 `/api/files/xxx.svg`
+> 会让脚本在站点源上执行，构成**存储型 XSS**。
+> 上传 SVG 返回 **4001 + 「不支持的文件类型：.svg」**。
+> 完整论证见 [03-后端设计.md](./03-后端设计.md) §5.8、[09](./09-已知限制与技术债.md) §5.10。
+>
+> 前端对应的 `accept` 也只列了 png/jpeg/webp/gif（`src/utils/media.ts` 的 `ACCEPT_IMAGE`），
+> 但**那只是选择器过滤**，真正的拦截在服务端。
+
 响应 `data`：
 
 ```json
