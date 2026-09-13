@@ -4,6 +4,7 @@ import { createCategory, getCategories } from '@/api/categories'
 import { createTag, getTags } from '@/api/tags'
 import { getCollections } from '@/api/collections'
 import { uploadFile } from '@/api/files'
+import { ACCEPT_IMAGE } from '@/utils/media'
 import { useAuthStore } from '@/stores/auth'
 import type { CategoryDto, CollectionDto, PostDetailDto, PostPayload, TagDto } from '@/types'
 
@@ -222,7 +223,7 @@ function submit() {
           <div class="cover-buttons">
             <label class="btn-mini">
               {{ uploadingCover ? '上传中...' : coverImage ? '更换封面' : '上传封面' }}
-              <input type="file" accept="image/*" hidden :disabled="uploadingCover" @change="onPickCover" />
+              <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploadingCover" @change="onPickCover" />
             </label>
             <button
               v-if="coverImage"

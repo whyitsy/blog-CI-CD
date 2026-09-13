@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using Blog.Tests.Infrastructure;
 
 namespace Blog.Tests.Integration;
@@ -27,13 +30,76 @@ public sealed class MediaUrlValidationTests
     private const string EvilUrl = "https://evil.com/x.png";
     private const string GoodUrl = "/api/files/2026/09/0123456789abcdef0123456789abcdef.webp";
 
+    private readonly BlogApiFixture _fixture;
     private readonly ApiClient _api;
     private string? _adminToken;
 
-    public MediaUrlValidationTests(BlogApiFixture fixture) => _api = new ApiClient(fixture.CreateClient());
+    public MediaUrlValidationTests(BlogApiFixture fixture)
+    {
+        _fixture = fixture;
+        _api = new ApiClient(fixture.CreateClient());
+    }
 
     private async Task<string> AdminAsync() =>
         _adminToken ??= await _api.LoginAsync("admin@example.com", "Admin@12345");
+
+    // ------------------------------------------------------------------ 文件上传：SVG（G11）
+
+    /// <summary>
+    /// SVG 必须被拒绝上传。
+    ///
+    /// <para>为什么这是安全问题而不是"少支持一种格式"：SVG 可以内嵌 <c>&lt;script&gt;</c>，
+    /// 而本站的文件读取接口是**同源**下发的。拥有 ContentWriter 的作者上传一个恶意 SVG，
+    /// 再把 <c>/api/files/xxx.svg</c> 发给管理员，管理员**直接打开链接**时脚本就在
+    /// 站点源上执行 —— 存储型 XSS。</para>
+    ///
+    /// <para>同样要配一条**正向**用例：如果白名单被改成"什么扩展名都拒"，
+    /// 只断言拒绝的测试照样全绿。</para>
+    /// </summary>
+    [Fact]
+    public async Task 上传_SVG被拒绝_位图放行()
+    {
+        var token = await AdminAsync();
+
+        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>";
+
+        var bad = await UploadAsync(token, "evil.svg", "image/svg+xml", Encoding.UTF8.GetBytes(svg));
+        Assert.Equal(Codes.InvalidArgument, bad.Code);
+        Assert.Contains("不支持的文件类型", bad.Message);
+        Assert.Null(bad.Url);
+
+        // 正向：普通位图仍然放行
+        var ok = await UploadAsync(token, "probe.png", "image/png", [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        Assert.Equal(Codes.Ok, ok.Code);
+        Assert.False(string.IsNullOrWhiteSpace(ok.Url));
+    }
+
+    /// <summary>multipart 上传（<see cref="ApiClient"/> 只封装 JSON，这里单独构造请求）</summary>
+    private async Task<(HttpStatusCode Status, int Code, string Message, string? Url)> UploadAsync(
+        string token, string fileName, string contentType, byte[] bytes)
+    {
+        using var content = new MultipartFormDataContent();
+        var part = new ByteArrayContent(bytes);
+        part.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        content.Add(part, "file", fileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/files/upload") { Content = content };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await _fixture.CreateClient().SendAsync(request);
+        var raw = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(raw))
+            return (response.StatusCode, -1, string.Empty, null);
+
+        using var doc = JsonDocument.Parse(raw);
+        var root = doc.RootElement;
+        var code = root.TryGetProperty("code", out var c) ? c.GetInt32() : -1;
+        var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? string.Empty : string.Empty;
+        var url = root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object
+                  && d.TryGetProperty("url", out var u) ? u.GetString() : null;
+
+        return (response.StatusCode, code, message, url);
+    }
 
     // ------------------------------------------------------------------ 作者头像
 

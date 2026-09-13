@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { deleteSocialLink, getSiteConfig, getSocialLinks, saveSocialLinks, updateSiteConfig } from '@/api/site'
 import { uploadFile } from '@/api/files'
+import { ACCEPT_IMAGE } from '@/utils/media'
 import FormSkeleton from '@/components/skeleton/FormSkeleton.vue'
 import SocialIcon from '@/components/common/SocialIcon.vue'
 import { useSiteStore } from '@/stores/site'
@@ -295,7 +296,7 @@ onMounted(load)
               <div class="media-buttons">
                 <label class="btn-ghost">
                   {{ uploadingLogo ? '上传中...' : basic.siteLogo ? '更换 Logo' : '上传 Logo' }}
-                  <input type="file" accept="image/*" hidden :disabled="uploadingLogo" @change="onPickLogo" />
+                  <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploadingLogo" @change="onPickLogo" />
                 </label>
                 <button
                   v-if="basic.siteLogo"
@@ -332,7 +333,7 @@ onMounted(load)
             </div>
             <label class="bg-add">
               {{ uploadingBg ? '上传中...' : '+ 上传' }}
-              <input type="file" accept="image/*" hidden :disabled="uploadingBg" @change="onPickBackground" />
+              <input type="file" :accept="ACCEPT_IMAGE" hidden :disabled="uploadingBg" @change="onPickBackground" />
             </label>
           </div>
           <span class="hint">

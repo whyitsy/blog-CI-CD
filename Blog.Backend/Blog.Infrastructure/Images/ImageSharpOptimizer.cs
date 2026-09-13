@@ -62,7 +62,7 @@ namespace Blog.Infrastructure.Images
                 return passthrough;
 
             if (!_convertible.Contains(normalized))
-                return passthrough; // .webp 已是最优；.gif/.svg/.ico/.mp4/... 不做转换
+                return passthrough; // .webp 已是最优；.gif/.ico/.mp4/... 不做转换（.svg 已不允许上传，见 G11）
 
             try
             {
