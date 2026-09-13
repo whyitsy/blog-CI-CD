@@ -29,11 +29,17 @@ const linkMsg = ref('')
 const versions = ref<Record<string, number>>({})
 const savingBasic = ref(false)
 const uploadingBg = ref(false)
+const uploadingLogo = ref(false)
 
 const basic = ref({
   siteName: '',
+  /** Logo 圆点里的文字，与站点名分开配置（站点名放不下，圆点只放 1~2 字符） */
+  logoName: '',
+  /** 自定义 Logo 图片；空字符串 = 未设置，前端回退到「渐变圆点 + logoName」 */
+  siteLogo: '',
   subtitlesText: '',
-  heroBackground: '',
+  /** 首屏背景图（多张，每次随机展示一张）；为空则用内置渐变背景 */
+  heroBackgrounds: [] as string[],
   foundingDate: '',
 })
 
@@ -42,8 +48,10 @@ async function loadConfig() {
   versions.value = cfg.versions ?? {}
   basic.value = {
     siteName: cfg.siteName ?? '',
+    logoName: cfg.logoName ?? '',
+    siteLogo: cfg.siteLogo ?? '',
     subtitlesText: (cfg.heroSubtitles ?? []).join('\n'),
-    heroBackground: cfg.heroBackground ?? '',
+    heroBackgrounds: [...(cfg.heroBackgrounds ?? [])],
     foundingDate: cfg.foundingDate ? cfg.foundingDate.slice(0, 10) : '',
   }
 }
@@ -57,6 +65,32 @@ const subtitles = computed(() =>
     .filter(Boolean),
 )
 
+/** 上传站点 Logo。同头像/封面：只允许上传，不提供 URL 输入框（服务端 MediaPath 兜底） */
+async function onPickLogo(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    errorMsg.value = '请选择图片文件'
+    input.value = ''
+    return
+  }
+
+  uploadingLogo.value = true
+  errorMsg.value = ''
+  try {
+    basic.value.siteLogo = await uploadFile(file)
+    basicMsg.value = 'Logo 上传成功，记得点击保存'
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : '上传失败'
+  } finally {
+    uploadingLogo.value = false
+    input.value = ''
+  }
+}
+
+/** 上传首屏背景图：每次追加一张，最终由前端随机挑一张展示 */
 async function onPickBackground(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -71,7 +105,7 @@ async function onPickBackground(event: Event) {
   uploadingBg.value = true
   errorMsg.value = ''
   try {
-    basic.value.heroBackground = await uploadFile(file)
+    basic.value.heroBackgrounds = [...basic.value.heroBackgrounds, await uploadFile(file)]
     basicMsg.value = '背景图上传成功，记得点击保存'
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '上传失败'
@@ -79,6 +113,10 @@ async function onPickBackground(event: Event) {
     uploadingBg.value = false
     input.value = ''
   }
+}
+
+function removeBackground(index: number) {
+  basic.value.heroBackgrounds = basic.value.heroBackgrounds.filter((_, i) => i !== index)
 }
 
 async function saveBasic() {
@@ -97,16 +135,25 @@ async function saveBasic() {
     await updateSiteConfig(SiteConfigKey.SiteName, basic.value.siteName.trim(), versionOf(SiteConfigKey.SiteName))
     await updateSiteConfig(SiteConfigKey.HeroSubtitles, JSON.stringify(subtitles.value), versionOf(SiteConfigKey.HeroSubtitles))
 
+    // Logo 文字留空时回退到 "k"（与改造前写死的字符一致），避免导航栏出现空白圆点
+    await updateSiteConfig(
+      SiteConfigKey.LogoName,
+      basic.value.logoName.trim() || 'k',
+      versionOf(SiteConfigKey.LogoName),
+    )
+    await updateSiteConfig(SiteConfigKey.SiteLogo, basic.value.siteLogo, versionOf(SiteConfigKey.SiteLogo))
+
     // 建站日期存 yyyy-MM-dd，后端按 DateTimeOffset 解析（用于 Footer 建站天数）
     await updateSiteConfig(
       SiteConfigKey.FoundingDate,
       basic.value.foundingDate ? `${basic.value.foundingDate}T00:00:00+08:00` : '',
       versionOf(SiteConfigKey.FoundingDate),
     )
+    // 背景图存 JSON 数组；后端会逐项做 /api/files 白名单校验，有一项不合法就整批拒绝
     // 最后一项的响应即包含全部配置项的最新版本号
     const latest = await updateSiteConfig(
       SiteConfigKey.HeroBackground,
-      basic.value.heroBackground.trim(),
+      JSON.stringify(basic.value.heroBackgrounds),
       versionOf(SiteConfigKey.HeroBackground),
     )
     versions.value = latest.versions ?? {}
@@ -224,10 +271,46 @@ onMounted(load)
 
         <p v-if="basicMsg" class="banner ok">{{ basicMsg }}</p>
 
-        <label class="field">
-          <span class="label">站点名称</span>
-          <input v-model="basic.siteName" class="input" maxlength="50" placeholder="显示在导航栏 / 首屏大标题" />
-        </label>
+        <div class="grid-2">
+          <label class="field">
+            <span class="label">站点名称</span>
+            <input v-model="basic.siteName" class="input" maxlength="50" placeholder="显示在导航栏 / 首屏大标题" />
+          </label>
+
+          <label class="field">
+            <span class="label">Logo 文字</span>
+            <input v-model="basic.logoName" class="input" maxlength="2" placeholder="k" />
+            <span class="hint">与站点名称分开配置：圆点里只放得下 1~2 个字符，留空则用 "k"</span>
+          </label>
+        </div>
+
+        <div class="field">
+          <span class="label">Logo 图片</span>
+          <div class="media-row">
+            <div class="logo-preview">
+              <img v-if="basic.siteLogo" :src="basic.siteLogo" alt="Logo 预览" />
+              <span v-else class="logo-fallback">{{ basic.logoName || 'k' }}</span>
+            </div>
+            <div class="media-actions">
+              <div class="media-buttons">
+                <label class="btn-ghost">
+                  {{ uploadingLogo ? '上传中...' : basic.siteLogo ? '更换 Logo' : '上传 Logo' }}
+                  <input type="file" accept="image/*" hidden :disabled="uploadingLogo" @change="onPickLogo" />
+                </label>
+                <button
+                  v-if="basic.siteLogo"
+                  type="button"
+                  class="link danger"
+                  :disabled="uploadingLogo"
+                  @click="basic.siteLogo = ''"
+                >
+                  移除
+                </button>
+              </div>
+              <span class="hint">只能上传，不设置则显示「渐变圆点 + Logo 文字」</span>
+            </div>
+          </div>
+        </div>
 
         <label class="field">
           <span class="label">首屏副标题（打字机）</span>
@@ -242,16 +325,19 @@ onMounted(load)
 
         <div class="field">
           <span class="label">首屏背景图</span>
-          <div class="inline-row">
-            <input v-model.trim="basic.heroBackground" class="input" placeholder="留空则使用内置渐变背景" />
-            <label class="btn-ghost">
-              {{ uploadingBg ? '上传中...' : '上传' }}
+          <div class="bg-list">
+            <div v-for="(bg, index) in basic.heroBackgrounds" :key="bg" class="bg-item">
+              <img :src="bg" alt="背景预览" />
+              <button type="button" class="link danger" @click="removeBackground(index)">删除</button>
+            </div>
+            <label class="bg-add">
+              {{ uploadingBg ? '上传中...' : '+ 上传' }}
               <input type="file" accept="image/*" hidden :disabled="uploadingBg" @change="onPickBackground" />
             </label>
           </div>
-          <div v-if="basic.heroBackground" class="preview">
-            <img :src="basic.heroBackground" alt="背景预览" />
-          </div>
+          <span class="hint">
+            可上传多张（最多 20 张），每次打开首页随机展示一张；不设置则使用内置渐变背景。
+          </span>
         </div>
 
         <label class="field narrow">
@@ -403,13 +489,10 @@ onMounted(load)
   font-family: inherit;
 }
 
-.inline-row {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-}
-.inline-row .input {
-  flex: 1;
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
 }
 
 .hint {
@@ -417,17 +500,93 @@ onMounted(load)
   color: var(--text-subtle);
 }
 
-.preview {
-  margin-top: var(--space-2);
+/* ---------- Logo 上传 ---------- */
+.media-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.logo-preview {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-raised);
+}
+.logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.logo-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
+}
+.media-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.media-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* ---------- 首屏背景图列表 ---------- */
+.bg-list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.bg-item {
+  position: relative;
+  width: 160px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  max-width: 360px;
+  background: var(--bg-raised);
 }
-.preview img {
+.bg-item img {
   width: 100%;
-  height: 120px;
+  height: 90px;
   object-fit: cover;
+}
+.bg-item .link {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) 0;
+  text-align: center;
+  border-top: 1px solid var(--border-subtle);
+}
+.bg-add {
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 90px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  font: var(--text-body-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+.bg-add:hover {
+  border-color: var(--brand-500);
+  color: var(--brand-500);
 }
 
 /* 社交链接表 */

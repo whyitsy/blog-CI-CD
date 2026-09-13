@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { logout as logoutApi } from '@/api/auth'
+import SiteLogo from '@/components/common/SiteLogo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,7 +30,7 @@ async function onLogout() {
     <header class="author-bar">
       <div class="bar-inner">
         <RouterLink to="/" class="brand">
-          <span class="logo-dot">k</span>
+          <SiteLogo :size="30" />
           <span class="brand-name">作者工作区</span>
         </RouterLink>
 
@@ -97,18 +98,6 @@ async function onLogout() {
   gap: var(--space-3);
   font-weight: 700;
   color: var(--text-strong);
-}
-
-.logo-dot {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  font-size: 15px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-  box-shadow: var(--glow-purple);
 }
 
 .brand-name {

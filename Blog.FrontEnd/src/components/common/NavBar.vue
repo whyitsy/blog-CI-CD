@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useSearchStore, useThemeStore } from '@/stores/app'
 import { useSiteStore } from '@/stores/site'
+import SiteLogo from '@/components/common/SiteLogo.vue'
 
 const route = useRoute()
 const theme = useThemeStore()
@@ -43,7 +44,7 @@ const isActive = (item: NavItem) =>
   <header class="navbar" :class="{ glass: scrolled }">
     <div class="navbar-inner container">
       <RouterLink to="/" class="logo">
-        <span class="logo-dot">k</span>
+        <SiteLogo :size="32" />
         <span class="logo-name">{{ site.config?.siteName ?? "kky's blog" }}</span>
       </RouterLink>
 
@@ -105,18 +106,6 @@ const isActive = (item: NavItem) =>
   font-weight: 700;
   font-size: 17px;
   color: var(--text-strong);
-}
-
-.logo-dot {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  font-size: 16px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-  box-shadow: var(--glow-purple);
 }
 
 .nav-links {

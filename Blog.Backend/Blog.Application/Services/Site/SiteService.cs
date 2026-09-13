@@ -45,12 +45,21 @@ namespace Blog.Application.Services.Site
 
             return new SiteConfigDto(
                 dict.TryGetValue(SiteConfigKeys.SiteName, out var name) ? name : "My Blog",
+                // Logo 文字缺省 "k"，与改造前写死的那个字符保持一致
+                dict.TryGetValue(SiteConfigKeys.LogoName, out var logoName) && !string.IsNullOrWhiteSpace(logoName)
+                    ? logoName.Trim()
+                    : "k",
+                NullIfEmpty(dict.GetValueOrDefault(SiteConfigKeys.SiteLogo)),
                 ParseSubtitles(dict.GetValueOrDefault(SiteConfigKeys.HeroSubtitles)),
-                dict.GetValueOrDefault(SiteConfigKeys.HeroBackground),
+                // 读取侧宽容：历史上这里存的是单个裸地址，MediaPath.ParseList 会把它当成单元素列表
+                MediaPath.ParseList(dict.GetValueOrDefault(SiteConfigKeys.HeroBackground)),
                 DateTimeOffset.TryParse(dict.GetValueOrDefault(SiteConfigKeys.FoundingDate), out var founding)
                     ? founding : null,
                 items.ToDictionary(i => i.Key, i => i.Version, StringComparer.OrdinalIgnoreCase));
         }
+
+        private static string? NullIfEmpty(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         /// <summary>
         /// 写入单个配置项：Key 尚未存在时按新增处理（忽略 version），已存在时走乐观锁。
@@ -61,11 +70,13 @@ namespace Blog.Application.Services.Site
             if (string.IsNullOrWhiteSpace(request.Key))
                 throw new BusinessException("配置项 Key 不能为空", ErrorCodes.InvalidArgument);
 
+            var value = NormalizeConfigValue(request.Key, request.Value);
+
             var config = await _configs.GetByKeyAsync(request.Key, cancellationToken);
 
             if (config is null)
             {
-                config = new SiteConfig(request.Key, request.Value);
+                config = new SiteConfig(request.Key, value);
                 await _configs.AddAsync(config, cancellationToken);
             }
             else
@@ -74,13 +85,30 @@ namespace Blog.Application.Services.Site
                     throw new BusinessException("缺少合法的版本号，无法进行并发控制", ErrorCodes.InvalidArgument);
 
                 _configs.ApplyOptimisticVersion(config, request.Version);
-                config.Update(request.Value);
+                config.Update(value);
             }
 
             await _uow.SaveChangesAsync(cancellationToken);
             await _cache.RemoveAsync(CacheKeys.SiteConfig, cancellationToken);
 
             return await GetConfigAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// 媒体类配置项在写库前必须过 <see cref="MediaPath"/> 白名单——这些值最终都会进
+        /// <c>&lt;img src&gt;</c>，与作者头像、文章封面是同一类风险，不能因为「只有管理员能改」
+        /// 就放行（管理员账号被盗是常见的攻击路径）。
+        /// 非媒体类配置项原样返回。
+        /// </summary>
+        private static string NormalizeConfigValue(string key, string value)
+        {
+            if (key.Equals(SiteConfigKeys.SiteLogo, StringComparison.OrdinalIgnoreCase))
+                return MediaPath.Validate(value, "站点 Logo");
+
+            if (key.Equals(SiteConfigKeys.HeroBackground, StringComparison.OrdinalIgnoreCase))
+                return MediaPath.ValidateJsonList(value, "首屏背景图");
+
+            return value;
         }
 
         public async Task<List<SocialLinkDto>> GetSocialLinksAsync(bool includeHidden = false, CancellationToken cancellationToken = default)

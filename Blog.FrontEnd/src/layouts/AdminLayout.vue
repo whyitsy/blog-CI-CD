@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useSiteStore } from '@/stores/site'
 import { useAuthStore } from '@/stores/auth'
 import { logout as logoutApi } from '@/api/auth'
+import SiteLogo from '@/components/common/SiteLogo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,7 +56,7 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   <div class="admin-shell">
     <aside class="admin-side">
       <div class="admin-brand">
-        <span class="logo-dot">k</span>
+        <SiteLogo :size="34" />
         <span class="brand-text">
           <strong>{{ site.config?.siteName ?? "kky's blog" }}</strong>
           <em>管理后台</em>
@@ -137,20 +138,6 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-}
-
-.logo-dot {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-  box-shadow: var(--glow-purple);
 }
 
 .brand-text {
