@@ -11,7 +11,7 @@ namespace Blog.Infrastructure.Persistence.Repositories
     /// </summary>
     public class PostQueryRepository : IPostQueryRepository
     {
-        /// <summary>中文全文检索配置名（由迁移创建，见 docs/03-后端设计.md §7.4 / T12）</summary>
+        /// <summary>中文全文检索配置名（由迁移创建，见 docs/02-架构与数据模型.md §9.4 / T12）</summary>
         private const string ChineseTextSearchConfig = "chinese";
 
         private readonly BlogDbContext _context;

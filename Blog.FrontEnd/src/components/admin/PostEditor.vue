@@ -211,7 +211,7 @@ function submit() {
       <span class="field-label">摘要</span>
       <!-- maxlength 与字数显示都是必须的：
            以前这里是 rows="2" 且两者皆无，粘贴长文本时只露两行，
-           用户根本看不出真实长度，结果一路提交到数据库才报错（docs/14 第 5 条）。
+           用户根本看不出真实长度，结果一路提交到数据库才报错（archive/问题排查记录.md §3）。
            上限 200 与后端 FieldLimits.PostSummary / Posts.Summary 列宽保持一致。 -->
       <textarea
         v-model="summary"

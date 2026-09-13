@@ -19,7 +19,7 @@ namespace Blog.Infrastructure.Persistence
         public DbSet<SocialLink> SocialLinks { get; set; }
         public DbSet<SiteConfig> SiteConfigs { get; set; }
 
-        /// <summary>登录账号（与 Author 分离，见 docs/10-决策记录.md §2.1 / T1）</summary>
+        /// <summary>登录账号（与 Author 分离，见 archive/决策记录.md §2.1 / T1）</summary>
         public DbSet<User> Users { get; set; }
 
         /// <summary>专栏</summary>
@@ -101,7 +101,7 @@ namespace Blog.Infrastructure.Persistence
                 // chinese 检索配置），这里只声明**影子属性**并告诉 EF「由数据库生成」。
                 //
                 // 为什么用影子属性而不是 Post 上的实体属性：Blog.Domain 必须保持零框架依赖
-                // （见 docs/03-后端设计.md §1.1），而 NpgsqlTsVector 来自 Npgsql，
+                // （见 docs/02-架构与数据模型.md §3.1），而 NpgsqlTsVector 来自 Npgsql，
                 // 因此该列只在 Infrastructure 层可见，查询时用 EF.Property 访问。
                 entity.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
                       .HasColumnName("SearchVector")
@@ -238,7 +238,7 @@ namespace Blog.Infrastructure.Persistence
                 // 默认头像。注意两点：
                 //   1. 必须走文件接口 /api/files/**（后端不提供 /media/ 静态路由）
                 //   2. 该文件位于 FileStorage:Root（media/）下，而 media/ 是运行期目录、已被 gitignore，
-                //      因此**全新克隆的仓库里不存在这个文件**，需要手工放入（见 docs/01 §3.2）
+                //      因此**全新克隆的仓库里不存在这个文件**，需要手工放入（见 docs/01-快速开始.md §4.2）
                 Avatar = "/api/files/avatar-default.webp",
                 Bio = "coding slayer",
                 CreatedAt = now,

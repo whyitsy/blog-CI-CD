@@ -1,4 +1,4 @@
-﻿namespace Blog.Application.Services.Post
+namespace Blog.Application.Services.Post
 {
     public record TagBriefDto(Guid Id, string Name);
 
@@ -42,7 +42,7 @@
 
     /// <summary>
     /// 创建文章。
-    /// Summary：留空则自动取正文前 50 字，填写则以填写内容为准（见 docs/10-决策记录.md §2.2 / T4）。
+    /// Summary：留空则自动取正文前 50 字，填写则以填写内容为准（见 archive/决策记录.md §2.2 / T4）。
     /// CollectionIds：所属专栏（一篇文章可属于多个专栏，T2），可选。
     /// AuthorId：署名作者，仅管理员可指定；作者身份登录时忽略（强制为自己）。
     /// </summary>

@@ -1,4 +1,4 @@
-﻿using Blog.Domain.Entities;
+using Blog.Domain.Entities;
 
 namespace Blog.Domain.IRepository
 {

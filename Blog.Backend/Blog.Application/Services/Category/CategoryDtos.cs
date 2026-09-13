@@ -1,4 +1,4 @@
-﻿namespace Blog.Application.Services.Category
+namespace Blog.Application.Services.Category
 {
     /// <summary>分类列表项（含文章数，用于分类墙；Version 为乐观锁版本号）</summary>
     public record CategoryDto(Guid Id, string Name, int PostCount, int Version);

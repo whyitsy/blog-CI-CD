@@ -3,7 +3,7 @@ namespace Blog.Application.Interfaces
     /// <summary>
     /// 密码哈希抽象。
     /// 实现必须是「慢哈希」（PBKDF2 / Argon2id / BCrypt），
-    /// 绝不能用 MD5/SHA1/SHA256 直接哈希（见 docs/08-开发知识点.md §16.4）。
+    /// 绝不能用 MD5/SHA1/SHA256 直接哈希（见 learn/01-后端知识地图.md §9.2）。
     /// </summary>
     public interface IPasswordHasher
     {
