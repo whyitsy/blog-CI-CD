@@ -1,4 +1,4 @@
-﻿using Blog.Application.Interfaces;
+using Blog.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 

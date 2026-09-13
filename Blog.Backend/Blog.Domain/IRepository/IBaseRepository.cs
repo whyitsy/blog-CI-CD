@@ -1,4 +1,4 @@
-﻿using Blog.Domain.Entities.Base;
+using Blog.Domain.Entities.Base;
 using System.Linq.Expressions;
 
 namespace Blog.Domain.IRepository

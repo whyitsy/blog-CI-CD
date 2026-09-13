@@ -1,4 +1,4 @@
-﻿using Blog.Domain.Entities.Base;
+using Blog.Domain.Entities.Base;
 using Blog.Domain.IRepository;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
