@@ -1,8 +1,8 @@
-﻿using Blog.Domain.Entities.Base;
+using Blog.Domain.Entities.Base;
 
 namespace Blog.Domain.Entities
 {
-    public class Author: BaseEntity
+    public class Author : BaseEntity
     {
         public string Name { get; private set; } = string.Empty;
         public string Email { get; private set; } = string.Empty;

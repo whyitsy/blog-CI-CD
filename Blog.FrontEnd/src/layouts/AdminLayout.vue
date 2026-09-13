@@ -312,6 +312,12 @@ const currentTitle = computed(() => currentItem.value?.label ?? '管理后台')
     flex-direction: column;
   }
   .admin-side {
+    /* 桌面态的 position:sticky + height:100vh 是为「侧栏独立滚动」服务的。
+       折叠成横向 tab 之后这个高度约束就成了 bug：横向 tab 会撑满整个视口高度，
+       而它本该只占一行。媒体查询只覆盖写在其中属性，**不会自动撤销其它规则**，
+       所以必须在这里显式复位。 */
+    position: static;
+    height: auto;
     width: 100%;
     flex-direction: row;
     align-items: center;

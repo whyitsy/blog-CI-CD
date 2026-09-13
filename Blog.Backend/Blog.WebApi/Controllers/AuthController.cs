@@ -9,7 +9,7 @@ namespace Blog.WebApi.Controllers
     /// 认证：管理员与作者共用同一个登录端点，登录后由前端按返回的 Role 决定去向。
     ///
     /// **没有注册端点**：按 T1 决策，作者账号由管理员在 /api/users 创建，
-    /// 管理员账号由已有管理员创建（见 docs/01-项目初始化与配置.md §2.2）。
+    /// 管理员账号由已有管理员创建（见 docs/01-快速开始.md §3.2）。
     /// </summary>
     [ApiController]
     [Route("api/auth")]
@@ -46,7 +46,7 @@ namespace Blog.WebApi.Controllers
 
         /// <summary>
         /// 注销：提升账号 TokenVersion，使该账号**所有**旧 token 立即失效。
-        /// 因为 JWT 本身无法主动失效（见 docs/08-开发知识点.md §15.3）。
+        /// 因为 JWT 本身无法主动失效（见 learn/01-后端知识地图.md §8.3）。
         /// </summary>
         [HttpPost("logout")]
         [Authorize]

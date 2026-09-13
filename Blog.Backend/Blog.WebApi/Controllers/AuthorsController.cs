@@ -11,7 +11,7 @@ namespace Blog.WebApi.Controllers
     /// <summary>
     /// 作者（**内容层**的署名对象，与 Post/Tag/Category 同层，不是登录账号）。
     ///
-    /// 与账号的分工见 docs/10-决策记录.md §2.1 / T1：
+    /// 与账号的分工见 archive/决策记录.md §2.1 / T1：
     ///   - 作者管理（本控制器）：维护「文章的署名信息」——姓名、头像、简介
     ///   - 账号管理（`/api/users`）：维护「谁能登录」——邮箱、密码、角色
     /// 两者通过可空的 `User.AuthorId` 弱关联，允许存在没有账号的作者。
@@ -59,7 +59,7 @@ namespace Blog.WebApi.Controllers
         /// <summary>
         /// 更新作者资料。
         /// 管理员可改任何人；作者角色只能改**自己的**署名信息
-        /// （后端按账号关联的 AuthorId 判定，见 docs/03-后端设计.md §5.5）。
+        /// （后端按账号关联的 AuthorId 判定，见 docs/02-架构与数据模型.md §10.4）。
         /// </summary>
         [HttpPut("{id:guid}")]
         [Authorize(Policy = "ContentWriter")]

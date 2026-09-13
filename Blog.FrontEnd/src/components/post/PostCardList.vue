@@ -15,7 +15,7 @@ const emit = defineEmits<{ (e: 'page-change', page: number): void }>()
 
 <template>
   <div class="post-list">
-    <!-- 骨架屏（组件化，见 docs/04-前端设计.md §6.4） -->
+    <!-- 骨架屏（组件化，见 docs/04-前端设计.md §6.2） -->
     <PostCardSkeleton v-if="loading" :count="skeletonCount ?? 12" />
 
     <!-- 空态 -->

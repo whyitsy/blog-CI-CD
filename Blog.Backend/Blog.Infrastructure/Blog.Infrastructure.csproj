@@ -35,7 +35,7 @@
          v3 为纯托管实现（无原生依赖），部署最简。
          许可：Six Labors Split License —— 开源或年营收 < 100 万美元视同 Apache-2.0。 -->
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-    <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
+    <PackageReference Include="StackExchange.Redis" Version="3.2.1" />
   </ItemGroup>
 
   <ItemGroup>

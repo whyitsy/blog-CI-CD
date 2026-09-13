@@ -1,4 +1,4 @@
-﻿using Blog.Application.Common;
+using Blog.Application.Common;
 using Blog.Application.Common.Exceptions;
 using Blog.Application.Interfaces;
 using Blog.Domain.Entities;
@@ -368,7 +368,7 @@ namespace Blog.Application.Services.Post
         /// <summary>
         /// 写文章时的入参校验。
         ///
-        /// <para>⚠️ <b>摘要长度以前漏在这里</b>（见 docs/14 第 5 条）：
+        /// <para>⚠️ <b>摘要长度以前漏在这里</b>（见 archive/问题排查记录.md §3）：
         /// 数据库有 <c>varchar(120)</c> 约束，但应用层不校验、前端也没有 <c>maxlength</c>，
         /// 于是超长时一路穿到数据库，抛 <c>DbUpdateException</c>，
         /// 用户看到的是「服务器内部错误」而不是「摘要太长了」。</para>

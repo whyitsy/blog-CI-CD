@@ -14,7 +14,7 @@ namespace Blog.Infrastructure.Security
     /// 本项目**只发 Access Token，不做 Refresh Token**（T7），有效期由 JwtOptions 控制。
     /// 由于 JWT 无状态、无法主动失效，采用 <see cref="User.TokenVersion"/> 方案补偿：
     /// 签发时把当前 TokenVersion 写入 claim，请求校验时与库中值比对，
-    /// 改密码 / 踢下线只需把 TokenVersion +1（见 docs/08-开发知识点.md §15.3）。
+    /// 改密码 / 踢下线只需把 TokenVersion +1（见 learn/01-后端知识地图.md §8.3）。
     /// </summary>
     public sealed class JwtTokenService : ITokenService
     {

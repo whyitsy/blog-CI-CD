@@ -7,7 +7,7 @@ namespace Blog.Infrastructure.Security
     /// 部署拓扑校验（T5 决策：启动期显式配置校验，而非运行期探测）。
     ///
     /// 规则：多实例部署 **必须** 启用 Redis 缓存与限流。
-    /// 原因（见 docs/03-后端设计.md §11）：
+    /// 原因（见 docs/02-架构与数据模型.md §16）：
     ///   - 每台实例各自用内存缓存 -> DB 压力 = 实例数倍
     ///   - 每台实例各自一个内存令牌桶 -> 实际限流阈值被放大到「配置值 × 实例数」，**限流形同虚设**
     ///
@@ -42,7 +42,7 @@ namespace Blog.Infrastructure.Security
                 $"  Deployment:RequireRedis   = {deployment.RequireRedis}\n" +
                 "多实例下使用进程内缓存与内存限流会导致：限流阈值被放大到实例数倍、缓存不共享。\n" +
                 "请二选一：① 配置 Cache:Provider = Redis；② 若确实是单实例，把 Deployment:InstanceCount 设为 1。\n" +
-                "（设计依据见 docs/03-后端设计.md §11）");
+                "（设计依据见 docs/02-架构与数据模型.md §16）");
         }
     }
 }

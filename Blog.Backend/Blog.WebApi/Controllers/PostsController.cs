@@ -67,7 +67,7 @@ namespace Blog.WebApi.Controllers
         /// <summary>
         /// 文章详情（**不计数**）：供管理端/编辑器取数据用。
         /// 与 GET /api/posts/{id} 的区别是**不会**让浏览量 +1，
-        /// 避免「后台点一次编辑就 +1」污染统计（见 docs/10-决策记录.md §3 / Q12）。
+        /// 避免「后台点一次编辑就 +1」污染统计（见 archive/决策记录.md §4 / Q12）。
         /// 需要登录（编辑器场景），且未发布文章仍受草稿权限保护。
         /// </summary>
         [HttpGet("{id:guid}/readonly")]

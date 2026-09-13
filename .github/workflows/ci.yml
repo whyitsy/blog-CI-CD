@@ -1,17 +1,17 @@
 # ============================================================================
 # CI：每次 push / PR 都用一台**干净的 Linux 机器**重跑全部验证
 #
-# 为什么这件事对本项目特别重要（见 docs/11-CI-CD与自动化交付.md §2.1）：
+# 为什么这件事对本项目特别重要（见 learn/02-CI-CD实践.md §2.1）：
 #   开发环境是 **Windows 编译 + WSL 发命令**，而部署目标是 **Linux + Nginx**。
 #   这个落差只会在部署当天暴露 —— 除非有一台干净的 Linux 机器每次都替你走一遍。
 #
 # 四个作业互不依赖，**并行**运行：
 #   hygiene   行尾检查（最快，秒级失败）
 #   frontend  类型检查 + 构建
-#   backend   编译 + 195 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
+#   backend   格式检查 + 编译 + 198 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
 #   security  依赖漏洞扫描（NuGet + npm，**只报告不阻断**）
 #
-# 设计依据与原理讲解：docs/11-CI-CD与自动化交付.md
+# 设计依据与原理讲解：learn/02-CI-CD实践.md
 # 覆盖率为什么必须排除迁移代码：Blog.Backend/coverage.runsettings 的注释
 # ============================================================================
 
@@ -50,15 +50,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # 把 docs/07 §7.2 的"人肉纪律"变成机器强制。
+      # 把 docs/05 §7.2 的"人肉纪律"变成机器强制。
       # 仓库历史上真发生过「39 个文件仅因 CRLF/LF 差异被整体纳入提交」。
       # 这条检查成本最低、收益最高，所以放在第一个作业里。
       - name: 检查行尾是否被写成 CRLF
         run: |
           if git ls-files --eol | grep -q 'w/crlf'; then
-            echo "::error::检测到 CRLF 行尾，请检查编辑器设置（见 docs/07 §7.2）"
+            echo "::error::检测到 CRLF 行尾，请检查编辑器设置（见 docs/05 §7.2）"
             echo "--- 受影响文件 ---"
             git ls-files --eol | grep 'w/crlf'
             exit 1
@@ -76,9 +76,9 @@ jobs:
       run:
         working-directory: Blog.FrontEnd
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           # 内置缓存：按 package-lock.json 的哈希做缓存键
@@ -91,7 +91,7 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      # 下面两条与 docs/07 §4.3 的手工命令完全一致
+      # 下面两条与 docs/05 §4.3 的手工命令完全一致
       - name: 类型检查
         run: npx vue-tsc -b --force
 
@@ -99,16 +99,16 @@ jobs:
         run: npx vite build
 
   # ══════════════════════════════════════════════════════════════════════
-  # 作业三：后端（编译 + 全部 195 项测试）
+  # 作业三：后端（编译 + 全部后端测试）
   # ══════════════════════════════════════════════════════════════════════
   backend:
     name: 后端（构建 + 测试）
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -126,7 +126,7 @@ jobs:
       #   集成测试需要 **zhparser 扩展**（Posts.SearchVector 是生成列，
       #   表达式用了 to_tsvector('chinese', ...)），而它不在官方镜像里、必须自行编译。
       #   而 `services:` 在 steps **之前**就启动了，**来不及先 build 镜像**。
-      #   这是 docs/11 §6.2 讨论的方案 A：不需要镜像仓库，代价是每次现编译。
+      #   这是 learn/02 §4.2 讨论的方案 A：不需要镜像仓库，代价是每次现编译。
       #
       # 未来若嫌慢，可改成方案 B（预构建推到 ghcr.io），
       # 但要**确保改 Dockerfile 时会重新推镜像** —— 否则会测到一个过期的数据库环境，
@@ -156,7 +156,7 @@ jobs:
           # ⚠️「容器启动了」!=「数据库能连了」。
           #    少了这一步，流水线会**随机失败**，而你会误以为是代码问题。
           #    随机失败比稳定失败更有害：它训练你"重跑一遍就好了"，
-          #    从而彻底摧毁你对流水线的信任（docs/11 §7.2）。
+          #    从而彻底摧毁你对流水线的信任（learn/02 §4.3）。
           for i in $(seq 1 60); do
             if docker exec pgsql pg_isready -U kky -d blog_stage2 >/dev/null 2>&1; then
               echo "PostgreSQL 就绪（等待 $((i * 2)) 秒）"
@@ -184,12 +184,32 @@ jobs:
       - name: 还原依赖
         run: dotnet restore Blog.Backend/Blog.Backend.slnx
 
+      # 缺口 G6：没有 lint / 格式门禁。
+      #
+      # ⚠️ 只查 whitespace，不查 analyzer：
+      #    实测 `dotnet format --severity info` 在本仓库报 21 条 analyzer 建议
+      #    （CA2016 / CA1873 / CA1816 / CA1861 / SYSLIB1045 / ASP0025）。
+      #    一次性把它们变成门禁 = 21 处改动 + 长期噪音，属于过度工程化。
+      #
+      # ⚠️ 覆盖范围由仓库根的 .editorconfig 决定，其中 end_of_line = lf 是关键：
+      #    dotnet format 在缺少该文件时的默认行尾是 CRLF，
+      #    会与 .gitattributes 冲突并让上面的行尾检查变红。
+      #
+      # 放在这里而不是 hygiene 作业：那个作业刻意不装 .NET SDK（5 秒跑完），
+      # 装 SDK + restore 会让它从"最快失败"变成最慢之一。
+      # 这里紧跟 restore，复用还原结果，且仍**早于**编译与测试 —— 失败依然快。
+      - name: 检查 C# 格式（.editorconfig）
+        run: |
+          dotnet format Blog.Backend/Blog.Backend.slnx whitespace --verify-no-changes --no-restore \
+            || { echo "::error::C# 格式不符合 .editorconfig。本地执行：dotnet format Blog.Backend/Blog.Backend.slnx whitespace"; exit 1; }
+          echo "OK：C# 格式符合 .editorconfig"
+
       - name: 编译（Release）
         run: dotnet build Blog.Backend/Blog.Backend.slnx --no-restore --configuration Release
 
-      # 跑全部 195 项（79 集成 + 116 单元）。
+      # 跑全部 198 项（79 集成 + 116 单元 + 3 统一响应体契约）。
       #
-      # 覆盖率**只产出报告、不设阈值**：一开始就卡阈值会逼人写垃圾测试来凑数（docs/11 §9.2）。
+      # 覆盖率**只产出报告、不设阈值**：一开始就卡阈值会逼人写垃圾测试来凑数（learn/02 §5.2）。
       #
       # ⚠️ 用 --settings 而不是 --collect：
       #    排除规则（EF 迁移、源生成代码）写在 coverage.runsettings 里，
@@ -207,7 +227,7 @@ jobs:
           --logger "trx;LogFileName=results.trx"
           --settings Blog.Backend/coverage.runsettings
 
-      # ⚠️ 这一步直接对应 docs/11 §11 的那句判据：
+      # ⚠️ 这一步直接对应 learn/02 §8 的那句判据：
       #      「一条从来没红过的流水线，你并不知道它是否真的在检查。」
       #
       #    `dotnet test` 在**一个测试都没发现**时同样返回退出码 0。
@@ -260,7 +280,7 @@ jobs:
               sys.exit(1)
           PY
 
-      # 覆盖率不阻断，但**必须看得见**（docs/11 §9.2：
+      # 覆盖率不阻断，但**必须看得见**（learn/02 §5.2：
       # 「把覆盖率报告作为 CI 制品上传 —— 看得见才会被关注」）。
       # 制品要下载才看得到，写进作业摘要则是打开 PR 就在眼前。
       #
@@ -296,7 +316,7 @@ jobs:
                       f'| 行覆盖 | {line_rate:.1f}% ({covered}/{valid}) |\n'
                       f'| 分支覆盖 | {branch_rate:.1f}% |\n\n'
                       '> 已排除 EF 迁移与源生成代码（`coverage.runsettings`）。\n'
-                      '> **不对总量设阈值**——阈值只会逼人写不 assert 的测试来凑数（docs/11 §9.2）。\n'
+                      '> **不对总量设阈值**——阈值只会逼人写不 assert 的测试来凑数（learn/02 §5.2）。\n'
                   )
           PY
 
@@ -304,7 +324,7 @@ jobs:
       # 只在成功时上传，等于"失败时什么都没有"—— 而失败时恰恰最需要报告。
       - name: 上传测试报告与覆盖率
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
           path: '**/TestResults/**'
@@ -316,7 +336,7 @@ jobs:
         run: docker logs pgsql
 
   # ══════════════════════════════════════════════════════════════════════
-  # 作业四：依赖安全扫描（对应 docs/09 §6 的 G5）
+  # 作业四：依赖安全扫描（对应 docs/06-技术债与待办.md §2 的 G5）
   #
   # 为什么单独开一个作业，而不是塞进上面两个里：
   #   ① 它回答的是**另一个问题**。上面两个问"我写的代码对不对"，
@@ -343,9 +363,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -355,7 +375,7 @@ jobs:
         run: dotnet restore Blog.Backend/Blog.Backend.slnx
 
       # --include-transitive 才是重点：漏洞通常藏在**传递依赖**里，
-      # 只扫直接依赖会漏掉大部分情况（docs/11 §9.4）。
+      # 只扫直接依赖会漏掉大部分情况（learn/02 §5.4）。
       #
       # 输出同时写进文件，后面那一步要把它搬进作业摘要 ——
       # 一个"只在日志深处"的检查等于没有。
@@ -369,7 +389,7 @@ jobs:
           if ! dotnet list Blog.Backend/Blog.Backend.slnx package \
                  --vulnerable --include-transitive 2>&1 | tee "$RUNNER_TEMP/nuget-vuln.txt"; then
             echo "::error::NuGet 漏洞扫描命令本身失败了（还原未完成？网络不通？）"
-            echo "::error::⚠️ 不要把这种情况当成「没有漏洞」—— 这是一次「不知道」（见 docs/14 第 8 条）"
+            echo "::error::⚠️ 不要把这种情况当成「没有漏洞」—— 这是一次「不知道」（见 archive/问题排查记录.md §8）"
             exit 1
           fi
 
@@ -384,7 +404,7 @@ jobs:
       - name: npm 漏洞扫描
         continue-on-error: true
         run: |
-          # ⚠️⚠️ 必须显式写 --registry。原因是一个真实的坑（docs/14 第 8 条）：
+          # ⚠️⚠️ 必须显式写 --registry。原因是一个真实的坑（archive/问题排查记录.md §8）：
           #
           #   本机的默认源是 registry.npmmirror.com（淘宝镜像），
           #   而它**没有实现 audit 接口**，请求会直接返回
@@ -401,7 +421,7 @@ jobs:
           # npm audit 正常时一定打印 "found N vulnerabilities"（N 可以是 0）。
           # 没有这行 → 审计没执行，而不是"没有漏洞"。
           if ! grep -qiE 'vulnerabilit' "$RUNNER_TEMP/npm-audit.txt"; then
-            echo "::error::npm audit 没有产出可识别的结论 —— 扫描很可能根本没执行（见 docs/14 第 8 条）"
+            echo "::error::npm audit 没有产出可识别的结论 —— 扫描很可能根本没执行（见 archive/问题排查记录.md §8）"
             echo "::error::⚠️ 不要把它当成「没有漏洞」"
             exit 1
           fi

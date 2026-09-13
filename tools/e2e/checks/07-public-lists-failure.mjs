@@ -40,7 +40,7 @@ const PAGES = [
   { path: '/collections', api: '/api/collections', empty: '暂无专栏', what: '专栏' },
   { path: '/tags', api: '/api/tags', empty: '暂无标签', what: '标签' },
   { path: '/categories', api: '/api/categories', empty: '暂无分类', what: '分类' },
-  // 归档页原先和标签/分类一样漏了 catch，是这条检查把它们三个一起揪出来的（docs/14 第 9 条）
+  // 归档页原先和标签/分类一样漏了 catch，是这条检查把它们三个一起揪出来的（archive/问题排查记录.md §9）
   { path: '/archive', api: '/api/posts/archives', empty: '暂无文章', what: '归档' },
 ]
 
