@@ -4,6 +4,8 @@ obj/
 *.user
 *.suo
 .vs/
+# 构建产物，同时也是 tools/e2e 的截图输出目录（tools/e2e/artifacts/）
+# —— 它和 bin/obj 是同一类东西：跑出来的，不该入库
 artifacts/
 TestResults/
 
