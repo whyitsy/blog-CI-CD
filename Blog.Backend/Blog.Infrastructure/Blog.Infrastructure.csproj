@@ -13,11 +13,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <!--
       这里**刻意不写**下面这些包：
         Microsoft.Extensions.Caching.Memory / Configuration.Abstractions / Configuration.Binder
@@ -28,13 +28,14 @@
       （.NET 10 的包裁剪会把显式引用判为冗余，报 NU1510，构建不再是 0 警告）。
       需要用到这些命名空间时直接 using 即可，**不要重新加回 PackageReference**。
     -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- 上传图片转 WebP（见 Files/ImageOptimization）。**刻意固定在 3.x**：
          v4 起要求构建期许可密钥 sixlabors.lic，社区许可虽免费但需先申请，否则构建直接报错。
          v3 为纯托管实现（无原生依赖），部署最简。
          许可：Six Labors Split License —— 开源或年营收 < 100 万美元视同 Apache-2.0。 -->
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-    <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
+    <PackageReference Include="StackExchange.Redis" Version="3.2.1" />
   </ItemGroup>
 
   <ItemGroup>
