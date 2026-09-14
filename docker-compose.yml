@@ -7,7 +7,7 @@
 #   docker compose ps
 #   curl -i http://localhost:8080/health
 #
-# 为什么要在本地跑这一套：docs/07 §8.2 预告的三个部署坑
+# 为什么要在本地跑这一套：docs/05 §8.2 预告的三个部署坑
 # （SPA history fallback / X-Forwarded-For / 工作目录）在这里**全部可复现**。
 # 在买服务器之前把它们踩完，远程部署时你就只需要面对"服务器环境"这一个变量。
 # ============================================================================
@@ -33,7 +33,7 @@ services:
       # ⚠️ 挂载点必须是 /var/lib/postgresql，**不是** /var/lib/postgresql/data。
       #    PG18 的 PGDATA 实际是 /var/lib/postgresql/18/docker，
       #    写错会让容器以为数据目录为空而重新初始化 —— 表现为"数据看起来丢了"。
-      #    （docs/09 §5.2 记录了这次真实踩坑）
+      #    （要改挂载点前，先 `docker compose exec pgsql printenv PGDATA` 核对实际路径）
       - pgdata:/var/lib/postgresql
 
     # ⚠️ 刻意**不发布端口到宿主机**，两个原因：
@@ -71,7 +71,7 @@ services:
       # ⚠️ 用 condition: service_healthy 而不是默认的 service_started。
       #    "容器启动了" != "数据库能连了"。
       #    应用启动时会执行数据库迁移，PG 没就绪就直接崩 —— 这是 CI/部署里
-      #    最常见的随机失败来源（docs/11 §7.2 第 4 点）。
+      #    最常见的随机失败来源（learn/02-CI-CD实践.md §4.3 第 4 条）。
       pgsql:
         condition: service_healthy
       redis:
@@ -103,13 +103,21 @@ services:
     # healthcheck:
     #   start_period: 90s
 
-    # ── 性能测试时再打开：限制内存能让你复现「容器被 OOM Kill」而不是拖垮宿主机 ──
-    # ── 这也是后面做 LOH / 图片上传内存分析的必要条件（docs/12）──
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: 1g
-    #       cpus: "1.0"
+    # ── ⚠️ 2 GB 服务器上这一条是**必需**，不是调优 ──────────────────────────
+    # 不加内存上限时，.NET 按**宿主机总内存**算 GC 堆硬上限（默认它的 75%）。
+    # 2 GB 机器上就是 1.5 GB —— 一次大图上传或大响应就可能涨到那个量级，
+    # 把 pgsql 挤到被内核 OOM Kill（表现为「博客突然 502，PG 容器重启过」）。
+    # 加上上限后 .NET 改按 768 MB 算（GC 上限 ≈576 MB），宁可提前回收也不撑爆机器。
+    # 本机实测空载只有 145 MB，768 MB 对个人博客绰绰有余。
+    #
+    # 只限 webapi：它是唯一会「贪心增长」的进程。PG 的 shared_buffers 是启动时定死的，
+    # redis / nginx 也各有上限 —— 给它们再套一层限制没有收益，只多一个被杀的理由。
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          # cpus 刻意不设：2 核机器上掐 CPU 配额会引入节流，压测时看到的
+          # 就不是真实的瓶颈了。要研究 CPU 饱和，见 learn/03。
 
     restart: unless-stopped
 
