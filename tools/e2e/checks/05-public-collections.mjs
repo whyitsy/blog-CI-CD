@@ -36,8 +36,42 @@ await main('05-public-collections', async ({ page, run }) => {
     return
   }
 
-  // 优先挑一个「有文章」的专栏来验证详情页；没有就退回第一个
-  const target = collections.find((c) => c.postCount > 0) ?? collections[0]
+  // ── 挑一个「确实有文章」的专栏 ──────────────────────────────────────
+  //
+  // ⚠️ **不能信列表接口里的 `postCount`。** `GET /api/collections` 的结果是**被缓存的**
+  //    （`CollectionService.GetAllAsync` 走 `GetOrCreateAsync`，TTL 约 30 分钟 + 抖动），
+  //    而 `GET /api/collections/{slug}`（详情）**不走缓存**。
+  //    实测撞到过：列表接口返回 1 个 postCount=0 的专栏，而详情接口对同一个 slug
+  //    返回 2 篇文章 —— 于是这个检查会误判成"该专栏下没有文章"而 SKIP，
+  //    看起来像环境数据不足，实际是**列表缓存陈旧**。
+  //    （清掉 Redis 里的 `blog:taxonomy:collections:v1:published` 后立刻恢复。）
+  //
+  //    所以这里改成：逐个看一眼**不缓存的详情接口**，以它为准。
+  const detailOf = async (slug) => (await apiGet(page, `/api/collections/${encodeURIComponent(slug)}`))?.body?.data
+
+  let target = null
+  let detail = null
+  for (const c of collections) {
+    const d = await detailOf(c.slug)
+    if (d && (d.posts?.length ?? 0) > 0) {
+      target = c
+      detail = d
+      break
+    }
+  }
+  if (!target) {
+    target = collections[0]
+    detail = await detailOf(target.slug)
+  }
+
+  // 列表 vs 详情不一致 → 明确说出来（这是"缓存陈旧"的信号，不是页面缺陷）
+  if (detail && (detail.posts?.length ?? 0) !== target.postCount) {
+    run.note(
+      `⚠️ 列表接口与详情接口不一致：「${target.title}」列表说 postCount=${target.postCount}，` +
+        `详情说有 ${detail.posts?.length ?? 0} 篇。` +
+        `列表接口是**被缓存**的（TTL 约 30 分钟），详情不走缓存 —— 多半是缓存陈旧，不是页面缺陷。`,
+    )
+  }
 
   // ── 列表页 ─────────────────────────────────────────────────────────
   await page.navigate('/collections', { ready: 'document.readyState === "complete"' })
@@ -65,9 +99,8 @@ await main('05-public-collections', async ({ page, run }) => {
   run.check('导航栏出现「专栏」入口', hasNav === true)
 
   // ── 详情页 ─────────────────────────────────────────────────────────
-  const detail = await apiGet(page, `/api/collections/${encodeURIComponent(target.slug)}`)
-  const detailData = detail?.body?.data
-  const posts = detailData?.posts ?? []
+  // detail 已经在上面取过（不缓存的接口），这里不再重复请求
+  const posts = detail?.posts ?? []
   run.note(`专栏「${target.slug}」详情接口返回 ${posts.length} 篇文章`)
 
   await page.navigate(`/collections/${target.slug}`, { ready: 'document.readyState === "complete"' })
@@ -78,7 +111,13 @@ await main('05-public-collections', async ({ page, run }) => {
   run.check('含「按专栏顺序阅读」', detailText.includes('按专栏顺序阅读'))
 
   if (posts.length === 0) {
-    run.skip('该专栏下没有文章 —— 跳过文章列表与序号的验证')
+    run.skip(
+      `「${target.title}」下没有已发布文章 —— 跳过文章列表与序号的验证。\n` +
+        `        ⚠️ 若你确认它其实有文章，先怀疑**专栏列表缓存陈旧**：\n` +
+        `           GET /api/collections 走缓存（TTL 约 30 分钟），详情接口不走。\n` +
+        `           清掉即可：docker exec -i redis redis-cli DEL blog:taxonomy:collections:v1:published\n` +
+        `           （注意：这条不是"页面有缺陷"，而是测试**取样取到了旧数据**。）`,
+    )
   } else {
     for (const p of posts) {
       run.check(`详情列出文章「${p.title}」`, detailText.includes(p.title))

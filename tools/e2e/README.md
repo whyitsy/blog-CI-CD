@@ -174,3 +174,5 @@ setVal(email, 'uitest@example.com')     // 第一次成功
 | `SKIP 开发库里一个专栏都没有` | 前置数据不足。**跳过不等于通过** —— 那部分没有被验证 |
 | 断言 `定位并填写标题与正文` 失败 | 表单 placeholder 改过了。选择器在 `04-author-flow.mjs` 里，改选择器而不是改断言 |
 | 全部检查都在同一步失败 | 多半是前端没起或后端挂了，先看 `run.mjs` 的 preflight 输出 |
+| `05` 说「接口返回 N 个专栏」比实际少，或跳过详情验证 | **专栏列表缓存陈旧**（`GET /api/collections` 走缓存，TTL 约 30 分钟；详情接口不走） | `docker exec -i redis redis-cli DEL blog:taxonomy:collections:v1:published`。⚠️ 若你是**用 SQL 直接改的库**，那一定会遇到这个 —— 直接改库绕过了应用的缓存失效 |
+| 某一步报 `Unexpected end of JSON input` | 后端/代理返回了非 JSON（多半是没在跑） | 现在会直接说明「服务端返回的不是 JSON（HTTP 502）—— 后端或反向代理很可能没有在运行」，照着提示起后端即可 |
