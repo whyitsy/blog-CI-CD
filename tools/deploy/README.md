@@ -218,7 +218,7 @@ docker compose up -d --force-recreate webapi nginx
 >
 > 这条是"回滚预案"里最容易想当然的地方，见 `docs/05` §8.9。
 
-## 6. HTTPS 与定时备份
+## 6. HTTPS 与备份
 
 ### 6.1 宿主机放一层 Caddy 终结 TLS（推荐）
 
@@ -299,10 +299,14 @@ curl -sI http://www.example.com | grep -i '^location'       # 期望 301 → htt
 curl -s 'https://www.example.com/api/posts/search?keyword=博客&page=1&pageSize=1' | head -c 120
 ```
 
-### 6.3 定时备份
+### 6.3 备份
 
-`tools/backup/README.md` §5 有 crontab 示例。
-⚠️ **备份文件不要和数据库放在同一台机器**，并且**每季度做一次恢复演练**。
+⚠️ **本项目不做定时备份** —— 个人项目，已在 `docs/06` §4 登记为「明确不做」。
+`tools/backup/` 里的脚本保留为**手工手段**：改动表结构之前跑一次，
+否则一旦迁移写错就没有退路（回滚镜像**不会**回滚表结构）。
+
+原理、恢复演练流程，以及「哪天改主意要开定时备份」的 crontab，
+见 `docs/05` §8.9 与 `tools/backup/README.md`。
 
 ---
 
