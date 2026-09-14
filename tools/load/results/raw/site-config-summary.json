@@ -1,0 +1,23 @@
+{
+  "endpoint": "site-config",
+  "script": "site-config",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 301,
+  "rps": 10.02,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 1.55,
+  "p90_ms": 1.92,
+  "p95_ms": 2.05,
+  "p99_ms": 2.48,
+  "avg_ms": 1.59,
+  "min_ms": 1.12,
+  "max_ms": 3.19,
+  "slo_p95_ms": 300,
+  "slo_pass": true,
+  "rate": 10,
+  "duration": "30s",
+  "passed": true
+}
