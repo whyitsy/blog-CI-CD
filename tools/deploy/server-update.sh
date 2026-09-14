@@ -44,15 +44,28 @@ NGINX_IMAGE="${PREFIX}-nginx:${SHA}"
 step "目标版本 ${SHA}"
 printf '  %s\n  %s\n' "$WEBAPI_IMAGE" "$NGINX_IMAGE"
 
+# ⚠️⚠️ 必须 export。
+#    `docker-compose.prod.yml` 里写的是 `${WEBAPI_IMAGE:?}` / `${NGINX_IMAGE:?}`，
+#    而这两个值**要到下面 pull 成功之后才会写进 .env**（刻意的顺序：拉失败时
+#    .env 保持旧值，栈不受影响）。在这个时间窗里，compose 只能从**环境变量**拿到它们。
+#    不 export 的表现是：pull 阶段直接报
+#      "required variable NGINX_IMAGE is missing a value" —— 而这跟镜像、
+#      跟网络都无关，报错信息里给的三条排查方向全是错的。
+#    Compose 的插值优先级是「shell 环境 > .env 文件」，所以 export 就够了；
+#    .env 里那两行仍然要写，那是给**下一次**不带本脚本的 compose 命令用的。
+export WEBAPI_IMAGE NGINX_IMAGE
+
 # 先拉，再改 .env —— 顺序不能反：
 # 拉取失败（tag 不存在 / 没设 public / 网络不通）时 .env 还是旧值，栈不受影响。
 step "拉取镜像"
 if ! "${COMPOSE[@]}" pull webapi nginx; then
-  die "拉取失败。三个最常见的原因：
+  die "拉取失败。四个最常见的原因：
        ① 这个 sha 的镜像还没推上去 —— 确认 CI 的 publish 作业跑绿了
        ② GHCR 上的 package 还是 private —— GitHub → Packages → Settings → 改成 public
           （或者在本机 docker login ghcr.io 之后再试）
-       ③ 网络不通（服务器访问 ghcr.io）"
+       ③ 网络不通（服务器访问 ghcr.io）
+       ④ 报的是 \"required variable ... is missing a value\" —— 那是脚本自己的问题
+          （环境变量没传进 compose），不是镜像的问题，去提 issue 而不是查网络"
 fi
 ok "镜像已拉到本地"
 
