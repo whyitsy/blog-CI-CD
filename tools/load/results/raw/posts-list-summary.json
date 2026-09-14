@@ -1,0 +1,23 @@
+{
+  "endpoint": "posts-list",
+  "script": "posts-list",
+  "base_url": "http://127.0.0.1:8080",
+  "requests": 300,
+  "rps": 9.99,
+  "dropped_iterations": 0,
+  "http_failed_rate": 0,
+  "business_error_rate": 0,
+  "checks_rate": 100,
+  "p50_ms": 1.72,
+  "p90_ms": 2.37,
+  "p95_ms": 2.63,
+  "p99_ms": 3.35,
+  "avg_ms": 1.8,
+  "min_ms": 1.24,
+  "max_ms": 6.58,
+  "slo_p95_ms": 300,
+  "slo_pass": true,
+  "rate": 10,
+  "duration": "30s",
+  "passed": true
+}
