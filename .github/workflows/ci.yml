@@ -149,7 +149,9 @@ jobs:
 
           # 缓存连接串在 appsettings.Development.json 里是 localhost:6379。
           # 限流桶也在这里，但测试夹具已把它关掉（RateLimit:Enabled=false）。
-          docker run -d --name redis -p 6379:6379 redis:7-alpine
+          # ⚠️ 版本与 docker-compose.yml 保持一致，且**写死到 patch 位** ——
+          #    在 CI 里用浮动 tag 会造出"本地绿、线上红"的版本漂移。
+          docker run -d --name redis -p 6379:6379 redis:7.4.11-alpine
 
       - name: 等待 PostgreSQL 就绪
         run: |

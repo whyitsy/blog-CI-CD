@@ -279,7 +279,7 @@ NuGet.Packaging.Core.PackagingException:
 
 **坑 B：Docker Hub 在部分网络下不可达**
 
-`docker compose up` 报 `failed to resolve reference "docker.io/library/redis:7-alpine"`。
+`docker compose up` 报 `failed to resolve reference "docker.io/library/redis:<tag>"`。
 `mcr.microsoft.com`（.NET 官方镜像）通常可达，但 Docker Hub 不一定。
 
 **解法**：给 Docker Desktop 配置 registry mirror（Settings → Docker Engine）：
