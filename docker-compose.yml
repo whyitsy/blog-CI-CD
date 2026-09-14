@@ -7,7 +7,7 @@
 #   docker compose ps
 #   curl -i http://localhost:8080/health
 #
-# 为什么要在本地跑这一套：docs/07 §8.2 预告的三个部署坑
+# 为什么要在本地跑这一套：docs/05 §8.2 预告的三个部署坑
 # （SPA history fallback / X-Forwarded-For / 工作目录）在这里**全部可复现**。
 # 在买服务器之前把它们踩完，远程部署时你就只需要面对"服务器环境"这一个变量。
 # ============================================================================
@@ -33,7 +33,7 @@ services:
       # ⚠️ 挂载点必须是 /var/lib/postgresql，**不是** /var/lib/postgresql/data。
       #    PG18 的 PGDATA 实际是 /var/lib/postgresql/18/docker，
       #    写错会让容器以为数据目录为空而重新初始化 —— 表现为"数据看起来丢了"。
-      #    （docs/09 §5.2 记录了这次真实踩坑）
+      #    （要改挂载点前，先 `docker compose exec pgsql printenv PGDATA` 核对实际路径）
       - pgdata:/var/lib/postgresql
 
     # ⚠️ 刻意**不发布端口到宿主机**，两个原因：
@@ -71,7 +71,7 @@ services:
       # ⚠️ 用 condition: service_healthy 而不是默认的 service_started。
       #    "容器启动了" != "数据库能连了"。
       #    应用启动时会执行数据库迁移，PG 没就绪就直接崩 —— 这是 CI/部署里
-      #    最常见的随机失败来源（docs/11 §7.2 第 4 点）。
+      #    最常见的随机失败来源（learn/02-CI-CD实践.md §4.3 第 4 条）。
       pgsql:
         condition: service_healthy
       redis:
