@@ -103,13 +103,21 @@ services:
     # healthcheck:
     #   start_period: 90s
 
-    # ── 性能测试时再打开：限制内存能让你复现「容器被 OOM Kill」而不是拖垮宿主机 ──
-    # ── 这也是后面做 LOH / 图片上传内存分析的必要条件（docs/12）──
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: 1g
-    #       cpus: "1.0"
+    # ── ⚠️ 2 GB 服务器上这一条是**必需**，不是调优 ──────────────────────────
+    # 不加内存上限时，.NET 按**宿主机总内存**算 GC 堆硬上限（默认它的 75%）。
+    # 2 GB 机器上就是 1.5 GB —— 一次大图上传或大响应就可能涨到那个量级，
+    # 把 pgsql 挤到被内核 OOM Kill（表现为「博客突然 502，PG 容器重启过」）。
+    # 加上上限后 .NET 改按 768 MB 算（GC 上限 ≈576 MB），宁可提前回收也不撑爆机器。
+    # 本机实测空载只有 145 MB，768 MB 对个人博客绰绰有余。
+    #
+    # 只限 webapi：它是唯一会「贪心增长」的进程。PG 的 shared_buffers 是启动时定死的，
+    # redis / nginx 也各有上限 —— 给它们再套一层限制没有收益，只多一个被杀的理由。
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          # cpus 刻意不设：2 核机器上掐 CPU 配额会引入节流，压测时看到的
+          # 就不是真实的瓶颈了。要研究 CPU 饱和，见 learn/03。
 
     restart: unless-stopped
 
