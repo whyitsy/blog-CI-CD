@@ -220,10 +220,89 @@ docker compose up -d --force-recreate webapi nginx
 
 ## 6. HTTPS 与定时备份
 
-- **HTTPS**：`docs/05` §8.8 给了两个方案，推荐**宿主机再放一层 Nginx 终结 TLS**，
-  容器栈的 `8080` 只监听 `127.0.0.1`（`server-init.sh` 生成的 `.env` 已经是这样）。
-- **定时备份**：`tools/backup/README.md` §5 有 crontab 示例。
-  ⚠️ **备份文件不要和数据库放同一台机器**，并且**每季度做一次恢复演练**。
+### 6.1 宿主机放一层 Caddy 终结 TLS（推荐）
+
+**概念与原理**见 `docs/05` §8.8。这里只讲怎么敲。选 Caddy 而不是 Nginx+certbot，
+是因为证书的**申请、续期、HTTP→HTTPS 跳转全自动**，配置只有三行。
+
+```bash
+# ── ① 装 Caddy（官方源）──
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+
+# ── ② 写配置（把域名换成你自己的）──
+sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
+www.example.com {
+	reverse_proxy 127.0.0.1:8080
+}
+
+example.com {
+	redir https://www.example.com{uri} permanent
+}
+EOF
+
+# ── ③ 放行端口（ufw 与云厂商安全组**两层都要**开）──
+sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+
+# ── ④ 启动并看证书申请过程 ──
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+journalctl -u caddy -f        # 成功会打印 "certificate obtained successfully"
+```
+
+> ⚠️ **Let's Encrypt 要回连验证**：配置里写的每个域名都必须已经解析到这台服务器。
+> apex 域名（`example.com`）没解析就把那一段删掉，只留 `www`。
+
+### 6.2 ⚠️ 顺序很重要：先让 `realip` 生效，再关 8080
+
+宿主机这一层会让容器 nginx 看到的对端变成宿主机，**「每 IP 限流」会静默退化成
+「全站共享一个桶」**（完整推导见 `docs/05` §8.8.1）。`deploy/nginx.conf` 里已经加了
+4 行 `realip` 修复，但它**在镜像里**——所以要重建 nginx 镜像并传上去
+（只有这一个镜像变了，不用重传 567 MB）：
+
+```bash
+# ── 本地仓库根目录 ──
+docker compose build nginx
+STAMP=$(date +%Y%m%d-%H%M%S)
+docker tag blog-nginx:local "blog-nginx:$STAMP"
+docker save blog-nginx:local "blog-nginx:$STAMP" | gzip > "dist-images/nginx-$STAMP.tar.gz"
+scp "dist-images/nginx-$STAMP.tar.gz" <用户>@<服务器>:/opt/blog/
+
+# ── 服务器 ──
+cd /opt/blog
+gunzip -c "nginx-$STAMP.tar.gz" | docker load
+docker compose up -d --force-recreate nginx
+
+# ⚠️ 验收：日志里必须是**真实访客 IP**，不是 127.0.0.1 / 172.x
+docker compose logs nginx | tail -20
+```
+
+确认上面这一条通过之后，**再**收掉明文旁路：
+
+```bash
+# ① .env 里改回回环
+HTTP_PORT=127.0.0.1:8080
+# ② 重建容器让它重新读端口绑定
+docker compose up -d nginx
+# ③ 腾讯云控制台关掉安全组的 8080
+```
+
+**最终验收**：
+
+```bash
+curl -sI https://www.example.com | head -3                  # 期望 200
+curl -sI http://www.example.com | grep -i '^location'       # 期望 301 → https
+curl -s 'https://www.example.com/api/posts/search?keyword=博客&page=1&pageSize=1' | head -c 120
+```
+
+### 6.3 定时备份
+
+`tools/backup/README.md` §5 有 crontab 示例。
+⚠️ **备份文件不要和数据库放在同一台机器**，并且**每季度做一次恢复演练**。
 
 ---
 
