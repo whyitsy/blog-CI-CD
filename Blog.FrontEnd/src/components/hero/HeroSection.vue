@@ -18,8 +18,11 @@ const visibleLinks = computed(() => site.socialLinks.filter((l) => l.isVisible))
  *   · 只在「当前这张不在新列表里」时才重新抽 —— 否则 site.refreshAll() 之类的
  *     刷新会把访客正在看的背景换掉。
  *
- * 列表为空（后台没配置）时 pickedBackground 为空串，模板会直接不渲染 .hero-bg，
- * 只留 .aurora-blobs 的内置渐变。
+ * 背景图与内置渐变**二选一**（见模板）：
+ *   · 抽到图 → 渲染 .hero-bg + .hero-mask，不渲染 .aurora-blobs
+ *   · 列表为空、pickedBackground 为空串 → 不渲染图片层与遮罩，只留 .aurora-blobs 的渐变
+ * 两者条件必须互斥：三个层都是 position:absolute 且同 z-index，同时存在会按 DOM 顺序
+ * 把渐变叠在照片上，观感发花。
  */
 const pickedBackground = ref('')
 
@@ -44,10 +47,10 @@ function scrollToList() {
 
 <template>
   <section class="hero">
-    <!-- 配置了背景图才渲染图片层与遮罩；没配置时只显示内置渐变（兑现配置页的说明） -->
+    <!-- 背景图与内置渐变二选一：配了图只留图 + 遮罩；没配图才用 .aurora-blobs 的渐变本体 -->
     <div v-if="pickedBackground" class="hero-bg" :style="{ backgroundImage: `url(${pickedBackground})` }" />
     <div v-if="pickedBackground" class="hero-mask" />
-    <div class="aurora-blobs" />
+    <div v-else class="aurora-blobs" />
 
     <div class="hero-content">
       <p class="hero-eyebrow">AURORA · BLOG</p>
