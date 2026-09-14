@@ -92,6 +92,25 @@ else
   die "后端不健康 —— 看日志：docker compose logs --tail=50 webapi"
 fi
 
+# ⚠️ 断言**真的换过去了**，而不是「命令跑完了」。
+#    Compose 完全可能因为「配置没变」而不重建容器；那样你看到的是「更新成功」，
+#    而线上跑的仍是旧镜像 —— 一次静默失败。所以查的是**容器实际的镜像名**。
+assert_image() {
+  local svc="$1" want="$2" cid got
+  cid="$("${COMPOSE[@]}" ps -q "$svc")"
+  [ -n "$cid" ] || die "$svc 没有正在运行的容器"
+  got="$(docker inspect -f '{{.Config.Image}}' "$cid")"
+  [ "$got" = "$want" ] || die "$svc 容器跑的仍是 ${got}，不是 ${want}
+       —— 更新没有真正生效。检查 .env 里的 WEBAPI_IMAGE / NGINX_IMAGE。"
+  ok "${svc} 确实在跑 ${SHA:0:12}"
+}
+assert_image webapi "$WEBAPI_IMAGE"
+assert_image nginx  "$NGINX_IMAGE"
+
+echo
+echo "⚠️ **以后请一律用本脚本更新**（或手动带上 -f docker-compose.prod.yml）。"
+echo "   直接跑 \`docker compose up -d\` 会按基础文件把容器换回本机构建的"
+echo "   blog-webapi:local —— 看起来成功了，实际是**悄悄退回旧镜像**。"
 echo
 echo "回滚到上一个版本："
 echo "  cp ${BACKUP} .env && ${COMPOSE[*]} up -d webapi nginx && ${COMPOSE[*]} restart nginx"
