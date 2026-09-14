@@ -140,32 +140,65 @@ docker compose version # 非 V1.x版本
 ## 3. 本地：构建并打包镜像
 
 ```bash
-# 在仓库根目录
-bash tools/deploy/pack-images.sh
-# 产出 dist-images/blog-images-<时间戳>.tar.gz（约 567 MB）
-# blog-postgres-zhparser:18        444 MB
-# blog-webapi:local                104 MB
-# blog-nginx:local                 25 MB
+bash tools/deploy/pack-images.sh               # 应用镜像（webapi + nginx）—— 日常用这个
+bash tools/deploy/pack-images.sh --all         # 四个都打 —— 首次部署
+bash tools/deploy/pack-images.sh --only nginx  # 只改了前端 —— 只打 nginx
+bash tools/deploy/pack-images.sh --dry-run     # 只预览会打哪些，不构建
 ```
 
-> 💡 **第二次以后的上线可以只传应用镜像。** 上面这个包**每次都会把 PG 镜像一起打进去**，
-> 而 PG 镜像（装了 zhparser + SCWS）占了 567 MB 里的大头，它**一个季度也未必变一次**。
-> 服务器上已经有它时，手工只打应用两个镜像即可 —— 传输量能降到 1/5 左右：
->
-> ```bash
-> STAMP=$(date +%Y%m%d-%H%M%S)
-> docker tag blog-webapi:local "blog-webapi:$STAMP" && docker tag blog-nginx:local "blog-nginx:$STAMP"
-> docker save blog-webapi:local blog-nginx:local "blog-webapi:$STAMP" "blog-nginx:$STAMP" | gzip > dist-images/app-$STAMP.tar.gz
-> ```
->
-> ⚠️ 前提是服务器上**确实还有** `blog-postgres-zhparser:18`（`docker images | grep zhparser` 确认）。
-> 不确定就老老实实跑 `pack-images.sh` —— 少传 400 MB 不值得冒"起不来"的风险。
+实测体积（2026-09-15，gzip 后的 tar.gz）：
+
+| 打包内容 | 体积 | 什么时候用 |
+|---|---|---|
+| 仅 `nginx` | **25 MB** | 只改了前端 / `deploy/nginx.conf` |
+| 仅 `webapi` | **103 MB** | 只改了后端 |
+| `webapi` + `nginx`（**默认**） | **128 MB** | 两边都改了 |
+| 仅 `redis` | **15 MB** | `docker-compose.yml` 里改了 Redis 版本 |
+| 仅 `pgsql` | **439 MB** | `deploy/postgres-zhparser.Dockerfile` 改了（罕见） |
+| 四个全部 | **≈590 MB** | **只有首次部署** |
+
+> ❌ **不要每次都传 PG 镜像。** 它单独就占 **439 MB**（含从源码编译的 zhparser + SCWS），
+> 而它一个季度也未必变一次。旧版脚本每次都会把它打进包里 —— 那 439 MB 是纯浪费。
+
+**关于 Redis**：它没有 `build:` 段，用的是**官方镜像**，脚本对它只 `pull` 不 `build`
+（对比 PG：必须自编译 zhparser，所以非自建不可）。但它**仍然会被 `--all` 打进包里** ——
+目的是让**服务器完全不需要连 Docker Hub**：那是个不受控的外部依赖
+（`docs/05 §8.5` 坑 B 记录过 Docker Hub 不可达，大陆网络尤其常见）。
+
+### 3.1 到底该打哪个？
+
+**改了什么 → 影响哪个镜像**（这张表就是 `--changed` 的判断依据）：
+
+| 改动位置 | 要重建 | 打哪个 |
+|---|---|---|
+| `Blog.Backend/**` | webapi | `--only webapi` |
+| `Blog.FrontEnd/**` | nginx | `--only nginx` |
+| `deploy/nginx.conf`、`deploy/nginx.Dockerfile` | nginx | `--only nginx` |
+| `deploy/webapi.Dockerfile` | webapi | `--only webapi` |
+| `deploy/postgres-zhparser.Dockerfile`、`deploy/postgres-init/**` | pgsql | `--only pgsql`（罕见） |
+| `docker-compose.yml` 里 `redis:` 的 `image:` 行 | 无（改的是版本号） | `--only redis`（把新版本带上去） |
+| 其它 `docker-compose.yml`、`tools/**`、`docs/**`、根 `README.md` | **不用重建** | —— 直接 scp |
+
+不想记的话让它自己判断：
+
+```bash
+bash tools/deploy/pack-images.sh --changed --dry-run   # 先预览
+bash tools/deploy/pack-images.sh --changed             # 相对「上次打包的提交」
+bash tools/deploy/pack-images.sh --changed origin/main # 或指定基准
+```
+
+⚠️ **`--changed` 的基准是「上次打包」，不是「上次部署」。** 如果你打了包但部署失败了，
+再跑 `--changed` 会漏掉已经打进那个包的内容 —— **拿不准就显式 `--only`，或直接 `--all`。**
+不认识的路径一律按"可能影响全部"处理，因为少传一个镜像的失败方式是**静默的**。
 
 ## 4. 传到服务器并启动
 
 ```bash
 # 在仓库根目录
-scp dist-images/blog-images-*.tar.gz docker-compose.yml  tools/deploy/server-init.sh  <用户>@<服务器>:/opt/blog/
+ssh <用户>@<服务器> 'mkdir -p /opt/blog/tools'
+scp dist-images/blog-images-*.tar.gz docker-compose.yml docker-compose.prod.yml \
+    tools/deploy/server-init.sh tools/deploy/server-update.sh \
+    <用户>@<服务器>:/opt/blog/
 
 # 备份脚本也要上去：它靠 `docker compose exec` 工作，必须在 compose 目录下运行
 scp -r tools/backup <用户>@<服务器>:/opt/blog/tools/
@@ -177,7 +210,11 @@ cd /opt/blog && bash server-init.sh blog-images-<时间戳>.tar.gz
 > ⚠️ **不要传开发机的 `.env`。** 密钥应该在服务器上现生成（`server-init.sh` 第 3 步就是这么做的），
 > 开发机的密钥一旦泄漏或复用，等于线上的 JWT 谁都能伪造。
 >
-> ⚠️ **`server-init.sh` 本身也要传上去**（上面第一组 `scp` 里的第二、三个文件）。
+> ⚠️ **`server-init.sh` 本身也要传上去**（上面第一组 `scp` 里的第二个文件）。
+> 漏传的表现是：ssh 进去执行 `bash server-init.sh` 报 `No such file or directory`。
+>
+> 💡 `docker-compose.prod.yml` 与 `server-update.sh` 是**路径 A（§4.5.1）**用的，
+> 首次部署可以一起传，也可以等要用时再传。
 > 漏传的表现是：ssh 进去执行 `bash server-init.sh` 报 `No such file or directory`。
 
 `server-init.sh` 会做八件事，每件都有验收输出：
@@ -196,6 +233,85 @@ cd /opt/blog && bash server-init.sh blog-images-<时间戳>.tar.gz
 > 把 `.env` 改成 `HTTP_PORT=8080` → `docker compose up -d nginx` →
 > 在腾讯云控制台**安全组**放行 8080 → 用 `http://<服务器IP>:8080` 访问。
 > 验证完请改回 `127.0.0.1:8080` 并把安全组的 8080 关掉。
+
+---
+
+## 4.5 日常更新一个新版本（改完代码之后走这个）
+
+首次部署用 `server-init.sh`（§4）。**之后每次更新有两条路，日常走 A**：
+
+| | 路径 | 传输量 | 什么时候用 |
+|---|---|---|---|
+| **A** | **CI 推 GHCR → 服务器 pull** | **几 MB**（Docker 按层拉） | **日常更新，推荐** |
+| B | 本地打包 → scp → `docker load` | 25 / 103 / 128 MB | 首次部署、PG 变了、或 GHCR 不可用时 |
+
+### 4.5.1 路径 A：从 GHCR 拉（推荐）
+
+```
+改代码 → commit → push → CI 绿（含 publish 作业推镜像）→ 合并
+   ↓
+服务器：bash tools/deploy/server-update.sh <提交 sha>
+```
+
+CI 合并进 main 后会跑 `publish` 作业，把 `webapi` 与 `nginx` 推到 GHCR，
+tag 就是那次合并的**提交 sha**。服务器一条命令拉下来：
+
+```bash
+cd /opt/blog
+bash tools/deploy/server-update.sh <sha>      # sha 从 CI 作业摘要里抄
+bash tools/deploy/server-update.sh <sha> --check   # 只拉不切，先确认能拉到
+```
+
+**一次性准备**（只做一次）：
+
+1. 服务器上要有 `docker-compose.prod.yml`
+2. `.env` 里加一行 `IMAGE_PREFIX=ghcr.io/<owner>/<repo>`
+3. 第一次推完镜像后，去 GitHub → **Packages** → 对应 package → Settings →
+   把 visibility 改成 **public**（否则服务器要 `docker login ghcr.io`）
+4. 手动跑一次 CI：Actions → CI → **Run workflow**（这个作业只能真跑验证）
+
+> ⭐ **路径 A 顺带补上了一个完整性缺口。** 走路径 B 时，你部署的镜像是
+> **你本地**在 CI 绿了之后构建的 —— 工作区脏的话，你会带着绿色徽章上线没测过的代码。
+> 走 A 时服务器拉的就是 CI 从那个提交构建的镜像，**"线上跑的是哪个提交"有据可查**。
+> 这正是 `docs/06` 的 **G4「没有发布流程与版本号」**。
+
+> ⚠️ **PG 与 Redis 不走 GHCR**，仍然靠 `pack-images.sh --all` 首次传一次。
+> 理由：PG 镜像 439 MB 且一年变不了几次，让 CI 每次重建重推不划算。
+
+### 4.5.2 路径 B：本地打包传输（首次部署与兜底）
+
+```bash
+# ① 本地
+git status                                    # 必须干净
+bash tools/deploy/pack-images.sh --changed --dry-run   # 预览：确认它只挑了该挑的
+bash tools/deploy/pack-images.sh --changed             # 产出 dist-images/blog-images-<时间戳>.tar.gz
+
+# ② 传上去
+scp dist-images/blog-images-*.tar.gz <用户>@<服务器>:/opt/blog/
+
+# ③ 服务器
+cd /opt/blog
+gunzip -c blog-images-*.tar.gz | docker load
+docker compose up -d            # 只重建有变化的容器，其余不动
+
+# ④ 验收（别只看"容器起来了"）
+docker compose ps                              # 四个都 healthy
+curl -sI https://<你的域名> | head -3           # 200
+docker compose logs nginx --tail 20            # 真实访客 IP（realip 是否仍生效）
+```
+
+> 💡 **不想在本地和服务器各落一个中转文件**，可以一条流水线推过去
+> （`pack-images.sh` 跑完会把这行命令打印出来）：
+>
+> ```bash
+> docker save blog-nginx:local blog-nginx:<时间戳> | gzip | ssh <用户>@<服务器> 'gunzip | docker load'
+> ```
+>
+> 只省磁盘、不省传输量 —— 真正的传输量由 §3.1 决定。
+
+**回滚**见 §5；**改了表结构**要额外注意 —— 回滚镜像**不会**回滚数据库结构。
+
+---
 
 ## 5. 回滚
 

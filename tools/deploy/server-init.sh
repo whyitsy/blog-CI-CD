@@ -79,7 +79,24 @@ fi
 
 step "2/8 装载镜像"
 gunzip -c "$TAR" | docker load
-ok "镜像已装载"
+
+# ⚠️ 包里可能**不含 PG 与 Redis 镜像** —— pack-images.sh 默认只打应用两个镜像
+#    （PG 有 439 MB 且一个季度未必变一次；Redis 是官方镜像）。
+#    但首次部署必须四个都有。在这里提前拦住并说清怎么做，
+#    好过让你去读 `docker compose up` 吐出来的 "image not found"。
+MISSING=""
+for img in blog-postgres-zhparser:18 blog-webapi:local blog-nginx:local redis:7.4.11-alpine; do
+  docker image inspect "$img" >/dev/null 2>&1 || MISSING="${MISSING} ${img}"
+done
+if [ -n "$MISSING" ]; then
+  bad "装载后仍缺少镜像：${MISSING}
+      这个包多半是**不含 PG / Redis 的应用包**（pack-images.sh 的默认行为）。
+      首次部署请改用：bash tools/deploy/pack-images.sh --all
+      然后把新产出的 tar.gz 传上来，重跑本脚本。
+      （Redis 是官方镜像、不构建，但 --all 会把它一并打进包里 ——
+        目的是让服务器**完全不需要连 Docker Hub**。）"
+fi
+ok "四个镜像齐备（webapi / nginx / postgres-zhparser / redis）"
 
 step "3/8 生成 .env（密钥现生成，绝不复用开发机的）"
 if [ -f .env ]; then
