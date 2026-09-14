@@ -1,0 +1,32 @@
+# ============================================================================
+# 服务器专用覆盖：应用镜像从 GHCR **拉**，不在本机构建。
+#
+# 用法（在服务器的部署目录，如 /opt/blog）：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   （平时不用手敲 —— 用 tools/deploy/server-update.sh <sha>）
+#
+# 为什么单独一个文件，而不是把基础文件改成从 GHCR 拉：
+#   开发机需要 `build:`（改完代码立刻构建），服务器需要「只拉不建」。
+#   这是**两个环境的不同行为**，不该挤在同一个文件里靠条件判断区分 ——
+#   那种写法一旦判断错了，表现是"在服务器上试图构建"，而服务器上根本没有源码。
+#
+# ⚠️ `pull_policy` 必须显式写 `missing`：
+#   基础文件里 webapi / nginx 都带 `build:`，而带 build 时 Compose 的默认
+#   策略偏向「构建」。写 `missing` = 本地没有才去拉，
+#   配合 server-update.sh 里**先 pull 再 up** 的顺序，就绝不会尝试构建。
+#
+# ⚠️ 这两个变量由 server-update.sh 写进 .env，形如：
+#     WEBAPI_IMAGE=ghcr.io/<owner>/<repo>-webapi:<commit-sha>
+#     NGINX_IMAGE=ghcr.io/<owner>/<repo>-nginx:<commit-sha>
+#   用 `:?` 强制要求它们存在 —— 缺失时直接报错退出，而不是悄悄回退到
+#   本机构建的 `blog-webapi:local`（那会让你以为部署成功了，其实跑的是旧镜像）。
+# ============================================================================
+
+services:
+  webapi:
+    image: ${WEBAPI_IMAGE:?WEBAPI_IMAGE 未设置（server-update.sh 会写进 .env）}
+    pull_policy: missing
+
+  nginx:
+    image: ${NGINX_IMAGE:?NGINX_IMAGE 未设置（server-update.sh 会写进 .env）}
+    pull_policy: missing

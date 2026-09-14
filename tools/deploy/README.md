@@ -195,7 +195,10 @@ bash tools/deploy/pack-images.sh --changed origin/main # 或指定基准
 
 ```bash
 # 在仓库根目录
-scp dist-images/blog-images-*.tar.gz docker-compose.yml  tools/deploy/server-init.sh  <用户>@<服务器>:/opt/blog/
+ssh <用户>@<服务器> 'mkdir -p /opt/blog/tools'
+scp dist-images/blog-images-*.tar.gz docker-compose.yml docker-compose.prod.yml \
+    tools/deploy/server-init.sh tools/deploy/server-update.sh \
+    <用户>@<服务器>:/opt/blog/
 
 # 备份脚本也要上去：它靠 `docker compose exec` 工作，必须在 compose 目录下运行
 scp -r tools/backup <用户>@<服务器>:/opt/blog/tools/
@@ -207,7 +210,11 @@ cd /opt/blog && bash server-init.sh blog-images-<时间戳>.tar.gz
 > ⚠️ **不要传开发机的 `.env`。** 密钥应该在服务器上现生成（`server-init.sh` 第 3 步就是这么做的），
 > 开发机的密钥一旦泄漏或复用，等于线上的 JWT 谁都能伪造。
 >
-> ⚠️ **`server-init.sh` 本身也要传上去**（上面第一组 `scp` 里的第二、三个文件）。
+> ⚠️ **`server-init.sh` 本身也要传上去**（上面第一组 `scp` 里的第二个文件）。
+> 漏传的表现是：ssh 进去执行 `bash server-init.sh` 报 `No such file or directory`。
+>
+> 💡 `docker-compose.prod.yml` 与 `server-update.sh` 是**路径 A（§4.5.1）**用的，
+> 首次部署可以一起传，也可以等要用时再传。
 > 漏传的表现是：ssh 进去执行 `bash server-init.sh` 报 `No such file or directory`。
 
 `server-init.sh` 会做八件事，每件都有验收输出：
@@ -231,30 +238,52 @@ cd /opt/blog && bash server-init.sh blog-images-<时间戳>.tar.gz
 
 ## 4.5 日常更新一个新版本（改完代码之后走这个）
 
-首次部署用 `server-init.sh`（§4）。**之后每次更新都走这条更短的路**：
+首次部署用 `server-init.sh`（§4）。**之后每次更新有两条路，日常走 A**：
+
+| | 路径 | 传输量 | 什么时候用 |
+|---|---|---|---|
+| **A** | **CI 推 GHCR → 服务器 pull** | **几 MB**（Docker 按层拉） | **日常更新，推荐** |
+| B | 本地打包 → scp → `docker load` | 25 / 103 / 128 MB | 首次部署、PG 变了、或 GHCR 不可用时 |
+
+### 4.5.1 路径 A：从 GHCR 拉（推荐）
 
 ```
-改代码 → 本地跑通 → commit → push → CI 四个作业绿 → 合并
+改代码 → commit → push → CI 绿（含 publish 作业推镜像）→ 合并
    ↓
-pack-images.sh（只打变化的那 1~2 个镜像）
-   ↓
-scp → docker load → docker compose up -d → 验收
+服务器：bash tools/deploy/server-update.sh <提交 sha>
 ```
 
-> ⚠️ **CI 不构建你要部署的那个镜像。** CI 只做编译 + 跑测试，它**不产出制品**。
-> 你部署的镜像是**你本地**在 CI 绿了之后构建的 —— 所以「CI 绿」和「线上跑的那版」
-> 之间没有机械保证，只靠你自己守纪律。（`docs/06` 的 **G4「没有发布流程与版本号」**
-> 说的就是这件事：无 tag、无版本号约定，出事只能靠 `git log` 现场考古。）
->
-> **最小心的做法：动手前 `git status` 必须是干净的** ——
-> 这样本地构建的源码就等于那个绿了的提交。
+CI 合并进 main 后会跑 `publish` 作业，把 `webapi` 与 `nginx` 推到 GHCR，
+tag 就是那次合并的**提交 sha**。服务器一条命令拉下来：
 
-一个**只改了前端**的完整例子（25 MB，而不是 567 MB）：
+```bash
+cd /opt/blog
+bash tools/deploy/server-update.sh <sha>      # sha 从 CI 作业摘要里抄
+bash tools/deploy/server-update.sh <sha> --check   # 只拉不切，先确认能拉到
+```
+
+**一次性准备**（只做一次）：
+
+1. 服务器上要有 `docker-compose.prod.yml`
+2. `.env` 里加一行 `IMAGE_PREFIX=ghcr.io/<owner>/<repo>`
+3. 第一次推完镜像后，去 GitHub → **Packages** → 对应 package → Settings →
+   把 visibility 改成 **public**（否则服务器要 `docker login ghcr.io`）
+4. 手动跑一次 CI：Actions → CI → **Run workflow**（这个作业只能真跑验证）
+
+> ⭐ **路径 A 顺带补上了一个完整性缺口。** 走路径 B 时，你部署的镜像是
+> **你本地**在 CI 绿了之后构建的 —— 工作区脏的话，你会带着绿色徽章上线没测过的代码。
+> 走 A 时服务器拉的就是 CI 从那个提交构建的镜像，**"线上跑的是哪个提交"有据可查**。
+> 这正是 `docs/06` 的 **G4「没有发布流程与版本号」**。
+
+> ⚠️ **PG 与 Redis 不走 GHCR**，仍然靠 `pack-images.sh --all` 首次传一次。
+> 理由：PG 镜像 439 MB 且一年变不了几次，让 CI 每次重建重推不划算。
+
+### 4.5.2 路径 B：本地打包传输（首次部署与兜底）
 
 ```bash
 # ① 本地
 git status                                    # 必须干净
-bash tools/deploy/pack-images.sh --changed --dry-run   # 预览：确认它只挑了 nginx
+bash tools/deploy/pack-images.sh --changed --dry-run   # 预览：确认它只挑了该挑的
 bash tools/deploy/pack-images.sh --changed             # 产出 dist-images/blog-images-<时间戳>.tar.gz
 
 # ② 传上去
@@ -271,14 +300,14 @@ curl -sI https://<你的域名> | head -3           # 200
 docker compose logs nginx --tail 20            # 真实访客 IP（realip 是否仍生效）
 ```
 
-> 💡 **不想在本地和服务器各落一个 567 MB 的中转文件**，可以一条流水线推过去
+> 💡 **不想在本地和服务器各落一个中转文件**，可以一条流水线推过去
 > （`pack-images.sh` 跑完会把这行命令打印出来）：
 >
 > ```bash
 > docker save blog-nginx:local blog-nginx:<时间戳> | gzip | ssh <用户>@<服务器> 'gunzip | docker load'
 > ```
 >
-> 只省磁盘、不省传输量 —— 真正的传输量由 §§3.1 决定。
+> 只省磁盘、不省传输量 —— 真正的传输量由 §3.1 决定。
 
 **回滚**见 §5；**改了表结构**要额外注意 —— 回滚镜像**不会**回滚数据库结构。
 

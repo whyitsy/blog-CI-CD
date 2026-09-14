@@ -5,11 +5,13 @@
 #   开发环境是 **Windows 编译 + WSL 发命令**，而部署目标是 **Linux + Nginx**。
 #   这个落差只会在部署当天暴露 —— 除非有一台干净的 Linux 机器每次都替你走一遍。
 #
-# 四个作业互不依赖，**并行**运行：
+# 五个作业。前四个互不依赖，**并行**运行：
 #   hygiene   行尾检查（最快，秒级失败）
 #   frontend  类型检查 + 构建
 #   backend   格式检查 + 编译 + 198 项测试（含 79 项需要真实 PostgreSQL 的集成测试）+ 覆盖率
 #   security  依赖漏洞扫描（NuGet + npm，**只报告不阻断**）
+# 第五个（publish）只在**合并进 main 之后**跑：把应用镜像推到 GHCR，
+# 让服务器 `docker compose pull` 就能更新（详见该作业的注释）。
 #
 # 设计依据与原理讲解：learn/02-CI-CD实践.md
 # 覆盖率为什么必须排除迁移代码：Blog.Backend/coverage.runsettings 的注释
@@ -447,5 +449,101 @@ jobs:
             echo '```'
             echo '> ⚠️ `SixLabors.ImageSharp` 刻意锁在 3.x（v4 起需构建期许可密钥）。'
             echo '> 因此这条扫描的结论里如果出现它，要看清楚"修复版本"是不是 4.x —— 是的话不能升，需要单独决策。'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ══════════════════════════════════════════════════════════════════════
+  # 作业五：把应用镜像推到 GHCR —— **只有合并进 main 之后才跑**
+  #
+  # 这个作业解决的是部署链路上的两个真问题：
+  #
+  #   ① **服务器不用再收 128 MB 的 tar.gz。** Docker 按**层**拉取，
+  #      改后端时通常只有应用那一层变（几 MB），而不是整个镜像。
+  #      本地 `pack-images.sh` 那条路仍然保留 —— **首次部署仍然用它**
+  #      （PG 镜像 439 MB，没必要每次让 CI 重建重推）。
+  #
+  #   ② ⭐ **补上「CI 绿」和「线上跑的那版」之间的完整性缺口。**
+  #      在此之前，你部署的镜像是**本地**在 CI 绿了之后构建的 ——
+  #      如果当时工作区是脏的，你会带着绿色徽章上线没测过的代码。
+  #      现在服务器拉的就是 CI 从那个提交构建的镜像，tag 就是 commit sha，
+  #      「线上跑的是哪个提交」不再需要考古。
+  #      （这正是 docs/06 的 G4「没有发布流程与版本号」。）
+  #
+  # ⚠️ 两个必须知道的点：
+  #   - **package 默认是私有的。** 要让服务器免登录拉取，第一次推完之后去
+  #     GitHub → Packages → 该 package → Settings → 把 visibility 改成 public。
+  #     仓库本身是 public，镜像里只有编译产物、**不含任何密钥**
+  #     （密钥全部由 .env 在运行时注入）。
+  #   - **这个作业只能靠真跑验证**：本地没法测 GHCR 推送。
+  #     第一次请在 Actions 页面手动 "Run workflow" 跑一次看结果。
+  # ══════════════════════════════════════════════════════════════════════
+  publish:
+    name: 发布镜像到 GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # PR 里不推：会把 registry 塞满永远不会合并的版本。
+    # 允许 workflow_dispatch 是为了能手动验证这个作业本身。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN 就够 —— 推同仓库的 package 只需要 packages: write，
+          # 不需要额外配 PAT（少一个会过期的凭据要维护）。
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ⚠️ 主 tag 用 `github.sha`（**不可变**），另外打一个 `latest` 只为肉眼方便。
+      #    **部署脚本绝不要用 latest** —— 那是个会移动的标签，出事时说不清
+      #    线上跑的是哪一版（docs/05 §8.9 用的是同一条理由）。
+      - name: 构建并推送 webapi
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/webapi.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-webapi:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-webapi:latest
+          # scope 要分开：两个镜像共用一份 gha 缓存会互相冲掉
+          cache-from: type=gha,scope=webapi
+          cache-to: type=gha,mode=max,scope=webapi
+
+      - name: 构建并推送 nginx
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/nginx.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-nginx:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-nginx:latest
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,mode=max,scope=nginx
+
+      - name: 把镜像地址写进作业摘要
+        run: |
+          {
+            echo '## 已发布镜像到 GHCR'
+            echo
+            echo '| 镜像 | tag（不可变，回滚就用它） |'
+            echo '|---|---|'
+            echo "| webapi | \`ghcr.io/${{ github.repository }}-webapi:${{ github.sha }}\` |"
+            echo "| nginx  | \`ghcr.io/${{ github.repository }}-nginx:${{ github.sha }}\` |"
+            echo
+            echo '### 服务器更新'
+            echo '```bash'
+            echo "bash tools/deploy/server-update.sh ${{ github.sha }}"
+            echo '```'
+            echo '> 这个 sha 就是本次合并后的提交 —— **线上跑的哪一版从此有据可查**。'
           } >> "$GITHUB_STEP_SUMMARY"
 
