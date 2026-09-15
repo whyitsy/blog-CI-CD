@@ -489,7 +489,11 @@ jobs:
       contents: read
       packages: write
     steps:
+      # ⚠️ fetch-depth: 0 —— 下面要拿 `github.event.before` / `HEAD^` 做 diff，
+      #    而 checkout 默认只拉 1 个提交（浅克隆），浅克隆里那两个 ref 都不存在。
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v4
 
@@ -546,4 +550,31 @@ jobs:
             echo '```'
             echo '> 这个 sha 就是本次合并后的提交 —— **线上跑的哪一版从此有据可查**。'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # ⚠️ 光推镜像**不够**：GHCR 里只有 webapi / nginx 两个镜像。
+      #    docker-compose.yml、PG 镜像、tools/ 下的脚本都不在里面 ——
+      #    改了那些却只跑 server-update.sh，会出现「镜像换了、配置没换」，
+      #    表现为某个功能不生效而**不报错**（本项目最防的那类静默失败）。
+      #
+      #    判断逻辑放在 `tools/deploy/what-to-do.sh` 里而不是内联在这里：
+      #    ① 你自己也能跑（`bash tools/deploy/what-to-do.sh origin/main HEAD`），
+      #       不需要为了看结论去翻 CI 日志；
+      #    ② 只有一个真相来源，不会和文档里的表各写一份、慢慢漂移。
+      - name: 判断本次改动是否还需要额外动作
+        run: |
+          set -uo pipefail
+
+          # push 事件里有 before（上一次的 main 顶端）；workflow_dispatch 没有
+          BASE='${{ github.event.before }}'
+          if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
+            BASE="$(git rev-parse --verify --quiet 'HEAD^' || true)"
+          fi
+
+          if [ -z "$BASE" ]; then
+            echo '> ℹ️ 拿不到对比基准（浅克隆 / 首次提交），跳过「还需要做什么」的判断。' \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          bash tools/deploy/what-to-do.sh "$BASE" '${{ github.sha }}' >> "$GITHUB_STEP_SUMMARY"
 
