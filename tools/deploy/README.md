@@ -278,6 +278,31 @@ bash tools/deploy/server-update.sh <sha> --check   # 只拉不切，先确认能
 > ⚠️ **PG 与 Redis 不走 GHCR**，仍然靠 `pack-images.sh --all` 首次传一次。
 > 理由：PG 镜像 439 MB 且一年变不了几次，让 CI 每次重建重推不划算。
 
+#### ⚠️ 光跑 `server-update.sh` 有时不够
+
+**GHCR 里只有 `webapi` / `nginx` 两个镜像。** 改了别的东西却只跑这个脚本，
+会出现「**镜像换了、配置没换**」—— 表现为某个功能不生效，而且**不报错**。
+
+| 本次改了什么 | 光跑 `server-update.sh` 够吗 |
+|---|---|
+| `Blog.Backend/**`、`Blog.FrontEnd/**`、`deploy/nginx.conf`、`deploy/{webapi,nginx}.Dockerfile` | ✅ 够了 |
+| `docker-compose.yml`、`docker-compose.prod.yml` | ⚠️ 还要 **scp** |
+| `deploy/postgres-zhparser.Dockerfile`、`deploy/postgres-init/**` | ⚠️ 还要 `pack-images.sh --only pgsql` → scp → `docker load` |
+| `docker-compose.yml` 里 redis 那行 `image:` | ⚠️ 还要 `pack-images.sh --only redis` → scp → `docker load` |
+| `tools/backup/**`、`tools/deploy/*.sh` | ⚠️ 还要 scp |
+
+**不用背这张表** —— CI 跑完会把结论**直接写进 `publish` 作业的摘要**里
+（你本来就要去那儿抄 sha，答案出现在同一个地方最不容易漏）。
+想提前看也可以：
+
+```bash
+bash tools/deploy/what-to-do.sh origin/main HEAD              # 这次合并需要额外做什么
+bash tools/deploy/what-to-do.sh <服务器上正跑的 sha> <新 sha>
+```
+
+> 判断逻辑只有这一份（`what-to-do.sh`）—— CI 和本地调的是同一个脚本，
+> 不会出现"文档里的表"和"CI 的判断"慢慢漂移。
+
 ### 4.5.2 路径 B：本地打包传输（首次部署与兜底）
 
 ```bash
@@ -430,7 +455,9 @@ curl -s 'https://www.example.com/api/posts/search?keyword=博客&page=1&pageSize
 
 | 脚本 | 在哪跑 | 做什么 |
 |---|---|---|
-| `pack-images.sh` | 本地仓库根目录 | 构建三个镜像 + 打时间戳 tag + 打包成 tar.gz |
+| `pack-images.sh` | 本地仓库根目录 | 按服务构建镜像 + 打时间戳 tag + 打包成 tar.gz（默认只打应用两个） |
 | `server-init.sh` | 服务器部署目录 | 环境预检（compose/磁盘/swap）+ 装载镜像 + 生成 `.env` + 起栈 + 八步验收 |
+| `server-update.sh` | 服务器部署目录 | **日常更新**：从 GHCR 拉指定 sha 的镜像并切换（§4.5.1） |
+| `what-to-do.sh` | 本地（CI 也调它） | 算出「这次改动除了更新镜像还需要做什么」（§4.5.1 那张表） |
 | `../backup/backup.sh` | 任意（compose 栈所在机器） | `pg_dump` 备份 |
 | `../backup/restore.sh` | 同上 | 还原到 `_restore` 库并核对 |
